@@ -51,7 +51,7 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  font-family: "Outfit", sans-serif;
   background: var(--bg-accent), var(--bg);
   color: var(--text);
 }
@@ -80,14 +80,14 @@ input {
 
 .site-header {
   margin-top: 12px;
-  padding: 14px 18px;
+  padding: 10px 16px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 18px;
+  gap: 12px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 22px;
+  border-radius: 20px;
   box-shadow: var(--shadow);
   backdrop-filter: blur(18px);
 }
@@ -179,7 +179,7 @@ input {
 .privacy-panel {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 28px;
+  border-radius: 22px;
   box-shadow: var(--panel-shadow);
   backdrop-filter: blur(18px);
 }
@@ -340,14 +340,14 @@ input {
 }
 
 .section-badge {
-  width: 42px;
-  height: 42px;
+  width: 40px;
+  height: 40px;
   display: grid;
   place-items: center;
-  border-radius: 16px;
+  border-radius: 50%;
   background: var(--primary-soft);
   color: var(--primary-strong);
-  font-size: 0.96rem;
+  font-size: 0.88rem;
   font-weight: 900;
 }
 
@@ -619,6 +619,8 @@ input {
   display: grid;
   gap: 8px;
   align-content: start;
+  justify-items: center;
+  text-align: center;
 }
 
 .footer-brand p,

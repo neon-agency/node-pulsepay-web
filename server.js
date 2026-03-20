@@ -1,3 +1,14 @@
+// Load .env manually
+try {
+  const fs = require('fs');
+  const path = require('path');
+  const envContent = fs.readFileSync(path.join(__dirname, '.env'), 'utf-8');
+  envContent.split('\n').forEach(line => {
+    const [key, value] = line.split('=');
+    if (key && value) process.env[key.trim()] = value.trim();
+  });
+} catch (e) {}
+
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
@@ -32,10 +43,30 @@ function resolveFile(urlPath) {
   return path.join(root, pathname);
 }
 
+const bot = require("./bot");
+
 http
   .createServer((req, res) => {
     if (!req.url) {
       send(res, 400, "Bad request");
+      return;
+    }
+
+    // Webhook Handlers
+    if (req.url === "/webhook" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => {
+        body += chunk;
+      });
+      req.on("end", async () => {
+        try {
+          await bot.handleWebhook(body);
+          send(res, 200, "OK");
+        } catch (error) {
+          console.error("Erro no webhook do bot:", error);
+          send(res, 500, "Internal Server Error");
+        }
+      });
       return;
     }
 
