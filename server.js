@@ -1,12 +1,18 @@
-// Load .env manually
 try {
   const fs = require('fs');
   const path = require('path');
-  const envContent = fs.readFileSync(path.join(__dirname, '.env'), 'utf-8');
-  envContent.split('\n').forEach(line => {
-    const [key, value] = line.split('=');
-    if (key && value) process.env[key.trim()] = value.trim();
-  });
+  const envPath = path.join(__dirname, '.env');
+  if (fs.existsSync(envPath)) {
+    const envContent = fs.readFileSync(envPath, 'utf-8');
+    envContent.split('\n').forEach(line => {
+      const parts = line.split('=');
+      if (parts.length >= 2) {
+        const key = parts.shift().trim();
+        const value = parts.join('=').trim();
+        process.env[key] = value;
+      }
+    });
+  }
 } catch (e) {}
 
 const http = require("http");
@@ -16,7 +22,7 @@ const path = require("path");
 const root = __dirname;
 const host = process.env.FRONTEND_HOST || "0.0.0.0";
 const port = Number(process.env.FRONTEND_PORT || 4173);
-const apiBaseUrl = process.env.FRONTEND_API_BASE_URL || "http://localhost:8080";
+const apiBaseUrl = process.env.FRONTEND_API_BASE_URL || process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:8080";
 
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
@@ -71,10 +77,11 @@ http
     }
 
     if (req.url.startsWith("/config.js")) {
+      const pixKey = process.env.PIX_KEY || "";
       send(
         res,
         200,
-        `window.PULSEPAY_CONFIG = ${JSON.stringify({ apiBaseUrl })};`,
+        `window.PULSEPAY_CONFIG = ${JSON.stringify({ apiBaseUrl, pixKey })};`,
         "application/javascript; charset=utf-8"
       );
       return;
@@ -104,5 +111,5 @@ http
     });
   })
   .listen(port, host, () => {
-    console.log(`PulsePay web running at http://localhost:${port}`);
+    console.log(`Recarga Facil web running at http://localhost:${port}`);
   });

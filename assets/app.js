@@ -15,13 +15,13 @@ const THEME_ICONS = {
 };
 
 const DEMO_ALWAYS_PASS_LOGIN = "PULSEVIP";
-const STEPS = ["Login", "Conta", "Plano", "Pagar"];
+const STEPS = ["Login", "Dados", "Plano", "Pagar"];
 const PLANS = [
-  { id: "pix-test", name: "Pix de teste", subtitle: "Cobrança para validação", price: 100 },
-  { id: "monthly", name: "Mensal", subtitle: "Acesso por 30 dias", price: 3000 },
-  { id: "quarterly", name: "Trimestral", subtitle: "Acesso por 90 dias", price: 8000 },
-  { id: "semiannual", name: "Semestral", subtitle: "Acesso por 180 dias", price: 14000 },
-  { id: "annual", name: "Anual", subtitle: "Acesso por 365 dias", price: 25000 }
+  { id: "pix-test", name: "Degustacao", subtitle: "1 dia", price: 100 },
+  { id: "monthly", name: "Mensal", subtitle: "30 dias", price: 3000 },
+  { id: "quarterly", name: "Trimestral", subtitle: "90 dias", price: 8000 },
+  { id: "semiannual", name: "Semestral", subtitle: "180 dias", price: 14000 },
+  { id: "annual", name: "Anual", subtitle: "365 dias", price: 25000 }
 ];
 
 const state = {
@@ -91,6 +91,25 @@ function selectedPlan() {
   return PLANS.find((plan) => plan.id === state.selectedPlanId) || PLANS[0];
 }
 
+function buildCheckoutCustomer() {
+  if (state.customer.name && state.customer.email && normalizeCpf(state.customer.cpf).length === 11) {
+    return {
+      name: state.customer.name,
+      email: state.customer.email,
+      cpf: normalizeCpf(state.customer.cpf)
+    };
+  }
+
+  const normalizedLogin = (state.login || DEMO_ALWAYS_PASS_LOGIN).trim().toUpperCase();
+  const safeLogin = normalizedLogin || DEMO_ALWAYS_PASS_LOGIN;
+
+  return {
+    name: safeLogin === DEMO_ALWAYS_PASS_LOGIN ? "Cliente PulseVIP" : `Cliente ${safeLogin}`,
+    email: `${safeLogin.toLowerCase()}@recargafacil.com`,
+    cpf: "55873283842"
+  };
+}
+
 function panelHeader(index, title, subtitle) {
   return `
     <div class="panel-header">
@@ -145,7 +164,6 @@ function renderSteps() {
       <div class="step ${status}">
         <div class="step-track">
           <div class="step-dot">${number}</div>
-          <div class="step-line"></div>
         </div>
         <div class="step-label">${label}</div>
       </div>
@@ -233,9 +251,9 @@ function renderManagerSettings() {
 function renderStepLogin() {
   return `
     <div class="panel-grid">
-      ${panelHeader("01", "Localizar conta", "Digite a conta do cliente para continuar o fluxo.")}
+      ${panelHeader("01", "Recarga de Conta", "Informe o numero da conta para iniciar a recarga.")}
       <div class="field">
-        <label for="login-input">Número da conta</label>
+        <label for="login-input">Numero da conta</label>
         <input id="login-input" value="${escapeHtml(state.login)}" placeholder="Ex: 123456 ou PULSEVIP" />
       </div>
       <button class="button primary full" id="next-login" type="button">Continuar</button>
@@ -247,15 +265,15 @@ function renderStepLogin() {
 function renderStepConfirm() {
   return `
     <div class="panel-grid">
-      ${panelHeader("02", "Confirmar conta", "Este passo serve apenas para validar se a conta localizada está correta.")}
+      ${panelHeader("02", "Confirmar", "Confira se esta e a conta correta antes de continuar.")}
       ${infoRows([
         { label: "Conta", value: escapeHtml(state.login) },
         { label: "Status", value: "Conta localizada", success: true },
-        { label: "Observação", value: "Os detalhes do plano aparecem no próximo passo" }
+        { label: "Plano atual", value: state.accountOverview?.active ? "Assinatura ativa" : "Assinatura inativa" }
       ])}
       ${actions([
         { id: "back-1", label: "Voltar", variant: "ghost" },
-        { id: "next-2", label: "Confirmar conta", variant: "primary" }
+        { id: "next-2", label: "Confirmar", variant: "primary" }
       ])}
     </div>
   `;
@@ -284,7 +302,7 @@ function renderPlanList() {
       ${PLANS.map(
         (plan) => `
           <button class="plan-card ${state.selectedPlanId === plan.id ? "active" : ""}" type="button" data-plan="${plan.id}">
-            <div>
+            <div class="plan-copy">
               <span class="plan-title">${escapeHtml(plan.name)}</span>
               <span class="plan-subtitle">${escapeHtml(plan.subtitle)}</span>
             </div>
@@ -299,7 +317,7 @@ function renderPlanList() {
 function renderStepPlan() {
   return `
     <div class="panel-grid">
-      ${panelHeader("03", "Selecionar plano", "Escolha a opção para gerar a cobrança Pix.")}
+      ${panelHeader("03", "Escolha o plano", "Selecione a opcao ideal para o cliente.")}
       ${renderActivePlan()}
       ${renderPlanList()}
       ${actions([
@@ -322,12 +340,12 @@ function renderPaymentResult() {
           { label: "Txid", value: escapeHtml(state.payment.provider_id || "-") },
           { label: "Pago em", value: escapeHtml(state.payment.paid_at ? new Date(state.payment.paid_at).toLocaleString("pt-BR") : "-") }
         ])}
-        <div class="copy-box" id="copy-box">${escapeHtml(state.payment.copy_paste || "Código indisponível.")}</div>
+        <button class="button primary full" id="copy-code" type="button">Copiar codigo Pix</button>
         ${actions([
-          { id: "copy-code", label: "Copiar código", variant: "ghost" },
-          { id: "check-status", label: isPaid ? "Confirmado" : "Verificar status", variant: "ghost" },
-          { id: "new-payment", label: "Nova recarga", variant: "primary" }
+          { id: "share-code", label: "Compartilhar", variant: "primary" },
+          { id: "check-status", label: isPaid ? "Confirmado" : "Status", variant: "ghost" }
         ])}
+        <button class="button ghost full" id="new-payment" type="button">Nova recarga</button>
       </div>
     </div>
   `;
@@ -338,24 +356,28 @@ function renderStepPay() {
   const feedback = state.feedback ? `<p class="feedback ${state.feedback.type}">${escapeHtml(state.feedback.message)}</p>` : "";
   return `
     <div class="panel-grid">
-      ${panelHeader("04", "Pagamento Pix", "Gere a cobrança para finalizar.")}
-      <div class="field-grid">
-        <div class="field"><label for="name">Nome</label><input id="name" value="${escapeHtml(state.customer.name)}" /></div>
-        <div class="field"><label for="email">E-mail</label><input id="email" value="${escapeHtml(state.customer.email)}" /></div>
-      </div>
-      <div class="field"><label for="cpf">CPF</label><input id="cpf" value="${escapeHtml(state.customer.cpf)}" placeholder="000.000.000-00" /></div>
+      ${panelHeader("04", "Pagamento Pix", "Escaneie o QR Code ou use o codigo copia e cola.")}
       ${infoRows([
         { label: "Plano", value: escapeHtml(plan.name) },
-        { label: "Total", value: money.format(plan.price / 100) }
+        { label: "Login", value: escapeHtml(state.login) },
+        { label: "Total", value: money.format(plan.price / 100), success: true }
       ])}
+      ${state.loading ? `<p class="payment-loading">Gerando pagamento...</p>` : ""}
       ${feedback}
-      ${actions([
-        { id: "back-3", label: "Voltar", variant: "ghost" },
-        { id: "pay", label: state.loading ? "Gerando..." : "Gerar Pix", variant: "primary" }
-      ])}
+      ${!state.payment ? actions([
+        { id: "back-3", label: "Voltar", variant: "ghost" }
+      ]) : ""}
       ${renderPaymentResult()}
     </div>
   `;
+}
+
+function openStepPay() {
+  state.step = 4;
+  state.payment = null;
+  setFeedback(null);
+  render();
+  generatePayment();
 }
 
 // --- Core Rendering & Logic ---
@@ -425,13 +447,16 @@ function renderPanel() {
     panel.innerHTML = renderStepPlan();
     document.querySelectorAll("[data-plan]").forEach(n => n.onclick = () => { state.selectedPlanId = n.dataset.plan; render(); });
     document.querySelector("#back-2").onclick = () => { state.step = 2; render(); };
-    document.querySelector("#next-3").onclick = () => { state.step = 4; render(); };
+    document.querySelector("#next-3").onclick = () => { openStepPay(); };
   } else {
     panel.innerHTML = renderStepPay();
-    document.querySelector("#back-3").onclick = () => { state.step = 3; render(); };
-    document.querySelector("#pay").onclick = generatePayment;
+    const backButton = document.querySelector("#back-3");
+    if (backButton) {
+      backButton.onclick = () => { stopPaymentPolling(); state.step = 3; state.loading = false; render(); };
+    }
     if (state.payment) {
       document.querySelector("#copy-code").onclick = copyPixCode;
+      document.querySelector("#share-code").onclick = sharePixCode;
       document.querySelector("#check-status").onclick = checkPaymentStatus;
       document.querySelector("#new-payment").onclick = () => {
         stopPaymentPolling();
@@ -454,17 +479,41 @@ async function copyPixCode() {
   render();
 }
 
+async function sharePixCode() {
+  if (!state.payment?.copy_paste) return;
+
+  try {
+    if (navigator.share) {
+      await navigator.share({
+        title: "Codigo Pix",
+        text: state.payment.copy_paste
+      });
+      setFeedback("Codigo Pix compartilhado.", "success");
+    } else {
+      await navigator.clipboard.writeText(state.payment.copy_paste);
+      setFeedback("Compartilhamento indisponivel. Codigo Pix copiado.", "success");
+    }
+  } catch (e) {
+    setFeedback("Nao foi possivel compartilhar o codigo Pix.", "error");
+  }
+
+  render();
+}
+
 async function generatePayment() {
   const plan = selectedPlan();
+  const checkoutCustomer = buildCheckoutCustomer();
+
   state.customer = {
-    name: document.querySelector("#name").value.trim(),
-    email: document.querySelector("#email").value.trim(),
-    cpf: document.querySelector("#cpf").value.trim()
+    name: checkoutCustomer.name,
+    email: checkoutCustomer.email,
+    cpf: checkoutCustomer.cpf
   };
-  if (!state.customer.name || !state.customer.email || normalizeCpf(state.customer.cpf).length !== 11) {
-    setFeedback("Preencha todos os campos.", "error"); render(); return;
-  }
-  state.loading = true; render();
+
+  state.loading = true;
+  setFeedback(null);
+  render();
+
   try {
     const res = await fetch(apiUrl("/api/v1/payments"), {
       method: "POST",
@@ -472,7 +521,8 @@ async function generatePayment() {
       body: JSON.stringify({
         provider: "efi", method: "pix", amount: plan.price, currency: "BRL",
         description: `${plan.name} - ${state.login}`,
-        customer: { name: state.customer.name, email: state.customer.email, cpf: normalizeCpf(state.customer.cpf) },
+        pix_key: config.pixKey,
+        customer: { name: checkoutCustomer.name, email: checkoutCustomer.email, cpf: checkoutCustomer.cpf },
         metadata: { login: state.login, plan_id: plan.id, manager_id: "1" }
       })
     });
