@@ -33,23 +33,20 @@ const contentTypes = {
   ".json": "application/json; charset=utf-8"
 };
 
+const bot = require("./bot");
+
 function send(res, status, body, type = "text/plain; charset=utf-8") {
   res.writeHead(status, { "Content-Type": type });
   res.end(body);
 }
 
 function resolveFile(urlPath) {
-  const pathname = decodeURIComponent(urlPath.split("?")[0]);
-  if (pathname === "/") {
-    return path.join(root, "index.html");
-  }
-  if (pathname === "/config.js") {
-    return null;
-  }
-  return path.join(root, pathname);
+  const [pathname] = urlPath.split("?");
+  const decoded = decodeURIComponent(pathname);
+  if (decoded === "/") return path.join(root, "index.html");
+  if (decoded === "/config.js") return null;
+  return path.join(root, decoded);
 }
-
-const bot = require("./bot");
 
 http
   .createServer((req, res) => {
@@ -58,22 +55,40 @@ http
       return;
     }
 
+    const [pathname, search] = req.url.split("?");
+    const normalizedPath = pathname.replace(/\/$/, "") || "/";
+    
+    console.log(`[${new Date().toLocaleTimeString()}] ${req.method} ${req.url}`);
+
     // Webhook Handlers
-    if (req.url === "/webhook" && req.method === "POST") {
-      let body = "";
-      req.on("data", (chunk) => {
-        body += chunk;
-      });
-      req.on("end", async () => {
-        try {
-          await bot.handleWebhook(body);
-          send(res, 200, "OK");
-        } catch (error) {
-          console.error("Erro no webhook do bot:", error);
-          send(res, 500, "Internal Server Error");
+    if (normalizedPath === "/webhook") {
+      if (req.method === "POST") {
+        let body = "";
+        req.on("data", (chunk) => body += chunk);
+        req.on("end", async () => {
+          try {
+            console.log("[Webhook] Payload recebido");
+            await bot.handleWebhook(body);
+            send(res, 200, "OK");
+          } catch (error) {
+            console.error("[Webhook] Erro ao processar:", error);
+            send(res, 500, "Internal Server Error");
+          }
+        });
+        return;
+      }
+      
+      if (req.method === "GET") {
+        const params = new URLSearchParams(search);
+        const challenge = params.get("hub.challenge");
+        if (challenge) {
+          console.log("[Webhook] Verificação de desafio recebida");
+          send(res, 200, challenge);
+          return;
         }
-      });
-      return;
+        send(res, 200, "Webhook endpoint ativo (GET)");
+        return;
+      }
     }
 
     if (req.url.startsWith("/config.js")) {
@@ -88,14 +103,19 @@ http
     }
 
     const target = resolveFile(req.url);
-    if (!target.startsWith(root)) {
+    if (!target || !target.startsWith(root)) {
       send(res, 403, "Forbidden");
       return;
     }
 
     fs.readFile(target, (error, data) => {
       if (error) {
-        // Fallback para SPA: serve index.html se não encontrar o arquivo
+        // Fallback apenas para GET HTML
+        if (req.method !== "GET" || path.extname(target) !== "") {
+          send(res, 404, "Not found");
+          return;
+        }
+
         const indexFallback = path.join(root, "index.html");
         fs.readFile(indexFallback, (err, indexData) => {
           if (err) {
@@ -111,5 +131,6 @@ http
     });
   })
   .listen(port, host, () => {
-    console.log(`Recarga Facil web running at http://localhost:${port}`);
+    console.log(`Recarga Facil web rodando em http://${host}:${port}`);
+    console.log(`API Base URL: ${apiBaseUrl}`);
   });
