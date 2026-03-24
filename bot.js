@@ -1,4 +1,5 @@
 const http = require('http');
+const https = require('https');
 
 const WHATSAPP_SERVICE_URL = process.env.WHATSAPP_SERVICE_URL || 'http://localhost:8082';
 const PAYMENT_SERVICE_URL = process.env.PAYMENT_SERVICE_URL || 'http://localhost:8083';
@@ -23,58 +24,50 @@ const PANELS = {
 
 const PRICE_PER_UNIT = 10.00; // R$ 10,00
 
-async function sendWhatsAppRequest(payload) {
+// Helper function to perform requests using either http or https
+async function makeRequest(url, payload) {
   const data = JSON.stringify(payload);
+  const protocol = url.startsWith('https') ? https : http;
+  
   const options = {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Content-Length': data.length,
+      'Content-Length': Buffer.byteLength(data),
     },
   };
   
-  const url = `${WHATSAPP_SERVICE_URL}/v1/messages/send`;
-  
   return new Promise((resolve, reject) => {
-    const req = http.request(url, options, (res) => {
+    const req = protocol.request(url, options, (res) => {
       let body = '';
       res.on('data', chunk => body += chunk);
-      res.on('end', () => resolve(body));
+      res.on('end', () => {
+        if (res.statusCode >= 400) {
+          return reject(new Error(`Status ${res.statusCode}: ${body}`));
+        }
+        resolve(body);
+      });
     });
+    
     req.on('error', (e) => reject(e));
     req.write(data);
     req.end();
   });
 }
 
+async function sendWhatsAppRequest(payload) {
+  const url = `${WHATSAPP_SERVICE_URL}/v1/messages/send`;
+  return makeRequest(url, payload);
+}
+
 async function callPaymentAPI(payload) {
-  const data = JSON.stringify(payload);
-  const options = {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Content-Length': data.length,
-    },
-  };
-  
   const url = `${PAYMENT_SERVICE_URL}/api/v1/payments`;
-  
-  return new Promise((resolve, reject) => {
-    const req = http.request(url, options, (res) => {
-      let body = '';
-      res.on('data', chunk => body += chunk);
-      res.on('end', () => {
-        try {
-          resolve(JSON.parse(body));
-        } catch (e) {
-          reject(new Error("Erro ao processar resposta do serviço de pagamento: " + body));
-        }
-      });
-    });
-    req.on('error', (e) => reject(e));
-    req.write(data);
-    req.end();
-  });
+  const body = await makeRequest(url, payload);
+  try {
+    return JSON.parse(body);
+  } catch (e) {
+    throw new Error("Erro ao processar resposta do serviço de pagamento: " + body);
+  }
 }
 
 function getBotConfig() {
