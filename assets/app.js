@@ -551,6 +551,7 @@ async function checkPaymentStatus() {
     if (state.payment.status === "paid") {
       stopPaymentPolling();
       setFeedback("Pagamento confirmado com sucesso.", "success");
+      showSuccess();
     } else {
       setFeedback("Pagamento ainda não confirmado.", "");
     }
@@ -595,6 +596,17 @@ document.querySelector("#theme-toggle").onclick = () => {
   syncTheme();
 };
 
+function showSuccess() {
+  const overlay = document.querySelector("#success-overlay");
+  if (overlay) overlay.classList.remove("hidden");
+}
+
+function closeSuccessOverlay() {
+  const overlay = document.querySelector("#success-overlay");
+  if (overlay) overlay.classList.add("hidden");
+}
+
+window.closeSuccessOverlay = closeSuccessOverlay;
 window.addEventListener("beforeunload", () => {
   stopPaymentPolling();
 });
