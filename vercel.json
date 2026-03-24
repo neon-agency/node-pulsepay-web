@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/config.js",
+      "destination": "/api/config"
+    },
+    {
+      "source": "/webhook",
+      "destination": "/api/webhook"
+    }
+  ]
+}
