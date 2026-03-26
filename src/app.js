@@ -3,6 +3,9 @@ const authRoutes = require('./routes/auth.routes');
 const serversRoutes = require('./routes/servers.routes');
 const clientsRoutes = require('./routes/clients.routes');
 const dashboardRoutes = require('./routes/dashboard.routes');
+const credentialsRoutes = require('./routes/credentials.routes');
+const rechargeRequestsRoutes = require('./routes/recharge-requests.routes');
+const botRoutes = require('./routes/bot.routes');
 const authMiddleware = require('./middlewares/auth.middleware');
 const errorHandler = require('./middlewares/error-handler');
 
@@ -19,6 +22,9 @@ app.use('/api/auth', authRoutes);
 app.use('/api/servers', serversRoutes);
 app.use('/api/clients', authMiddleware, clientsRoutes);
 app.use('/api/dashboard', authMiddleware, dashboardRoutes);
+app.use('/api/credentials', credentialsRoutes);
+app.use('/api/recharge-requests', rechargeRequestsRoutes);
+app.use('/api/bot', botRoutes);
 
 app.use(errorHandler);
 

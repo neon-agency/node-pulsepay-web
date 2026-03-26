@@ -6,7 +6,8 @@ class BotIntegrationsService {
     return {
       phone_number_id: process.env.BOT_PHONE_NUMBER_ID || 'PENDING_ID',
       access_token: process.env.BOT_ACCESS_TOKEN || 'PENDING_TOKEN',
-      pix_key: process.env.PIX_KEY || 'b0944752-7136-49ef-920a-0d21a3aa4be5'
+      pix_key: process.env.PIX_KEY || 'b0944752-7136-49ef-920a-0d21a3aa4be5',
+      internal_api_key: process.env.INTERNAL_API_KEY || null
     };
   }
 
@@ -151,6 +152,60 @@ class BotIntegrationsService {
       method: 'GET'
     });
     return parseServersResponse(body);
+  }
+
+  getInternalApiHeaders() {
+    const { internal_api_key: internalApiKey } = this.getBotConfig();
+    if (!internalApiKey) return {};
+
+    return {
+      'x-internal-api-key': internalApiKey
+    };
+  }
+
+  async resolveCredentialFromApi({ nome, last4 }) {
+    const { internalApiBaseUrl } = this.getUrls();
+    const body = await this.makeRequest(`${internalApiBaseUrl}/api/bot/resolve-credential`, {
+      method: 'POST',
+      payload: { nome, last4 },
+      headers: this.getInternalApiHeaders()
+    });
+
+    try {
+      return JSON.parse(body);
+    } catch (_error) {
+      throw new Error(`Resposta inválida ao resolver credencial: ${body}`);
+    }
+  }
+
+  async createRechargeRequest(payload) {
+    const { internalApiBaseUrl } = this.getUrls();
+    const body = await this.makeRequest(`${internalApiBaseUrl}/api/recharge-requests`, {
+      method: 'POST',
+      payload,
+      headers: this.getInternalApiHeaders()
+    });
+
+    try {
+      return JSON.parse(body);
+    } catch (_error) {
+      throw new Error(`Resposta inválida ao criar recarga: ${body}`);
+    }
+  }
+
+  async updateRechargeRequestPayment(id, payload) {
+    const { internalApiBaseUrl } = this.getUrls();
+    const body = await this.makeRequest(`${internalApiBaseUrl}/api/recharge-requests/${id}/payment`, {
+      method: 'PATCH',
+      payload,
+      headers: this.getInternalApiHeaders()
+    });
+
+    try {
+      return JSON.parse(body);
+    } catch (_error) {
+      throw new Error(`Resposta inválida ao atualizar pagamento: ${body}`);
+    }
   }
 }
 

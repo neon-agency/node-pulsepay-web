@@ -5,19 +5,30 @@ const STAGES = {
   START: 'START',
   ASK_PANEL: 'ASK_PANEL',
   ASK_DOUBT: 'ASK_DOUBT',
-  ASK_LOGIN: 'ASK_LOGIN',
+  ASK_CREDENTIAL_NAME: 'ASK_CREDENTIAL_NAME',
+  ASK_CREDENTIAL_LAST4: 'ASK_CREDENTIAL_LAST4',
+  ASK_SERVER: 'ASK_SERVER',
+  ASK_ACCOUNT: 'ASK_ACCOUNT',
   ASK_QUANTITY: 'ASK_QUANTITY',
   ASK_PAYMENT: 'ASK_PAYMENT',
   COMPLETING: 'COMPLETING'
 };
 
-const PRICE_PER_UNIT = 10.00;
 const SERVER_LIST_PAGE_SIZE = 4;
 const SERVER_NEXT_PAGE_ID = 'server:more';
 const END_CONVERSATION_ID = 'end:conversation';
 const END_CONVERSATION_TITLE = '🛑 Encerrar';
 
 class BotService {
+  formatMoney(value) {
+    const amount = Number.isFinite(Number(value)) ? Number(value) : 0;
+    return amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  }
+
+  sanitizeLast4(value) {
+    return String(value || '').replace(/\D/g, '').slice(-4);
+  }
+
   normalizeServerButtonTitle(name) {
     const cleanName = String(name || '').trim() || 'Servidor';
     return cleanName.length <= 20 ? cleanName : `${cleanName.slice(0, 17)}...`;
@@ -25,10 +36,11 @@ class BotService {
 
   buildServerChoices(servers) {
     return (servers || []).map((server) => ({
-      buttonId: `server:${server.id}`,
+      buttonId: `server:${server.serverId}`,
       title: this.normalizeServerButtonTitle(server.servidor),
-      serverId: String(server.id),
-      serverName: String(server.servidor || '').trim()
+      serverId: String(server.serverId),
+      serverName: String(server.servidor || '').trim(),
+      unitPrice: Number(server.effectivePrice)
     }));
   }
 
@@ -75,13 +87,21 @@ class BotService {
     });
 
     const title = isFirstPrompt
-      ? `Excelente! 🚀 Primeiramente, selecione o *Servidor* que você deseja recarregar:\n\nPágina ${safePage + 1}/${totalPages}`
+      ? `Excelente! 🚀 Agora selecione o *Servidor* vinculado à sua credencial:\n\nPágina ${safePage + 1}/${totalPages}`
       : `Selecione um servidor 👇\n\nPágina ${safePage + 1}/${totalPages}`;
 
     await sendList(
       title,
       'Ver servidores',
-      currentRows
+      currentRows.map((row) => {
+        if (!row.id.startsWith('server:')) return row;
+        const choice = serverChoices.find((item) => item.buttonId === row.id);
+        if (!choice) return row;
+        return {
+          ...row,
+          description: `${choice.serverName} • ${this.formatMoney(choice.unitPrice)} por crédito`
+        };
+      })
     );
 
     return safePage;
@@ -122,27 +142,9 @@ class BotService {
 
       case STAGES.ASK_PANEL:
         if (text === '1') {
-          let serverChoices = [];
-          try {
-            const servers = await integrationsService.fetchServersFromApi();
-            serverChoices = this.buildServerChoices(servers);
-          } catch (error) {
-            console.error('Erro ao buscar servidores na API:', error);
-            await sendText('❌ Não consegui carregar os servidores agora. Tente novamente em instantes.');
-            session.stage = STAGES.START;
-            break;
-          }
-
-          if (!serverChoices.length) {
-            await sendText('⚠️ Nenhum servidor disponível no momento. Tente novamente mais tarde.');
-            session.stage = STAGES.START;
-            break;
-          }
-
-          session.serverChoices = serverChoices;
-          session.serverPage = await this.sendServerList(sendList, serverChoices, 0, true);
-
-          session.stage = STAGES.ASK_LOGIN;
+          await sendText('Perfeito! ✅ Para continuar, informe o *nome* usado na credencial:');
+          await this.sendEndConversationOption(sendButtons);
+          session.stage = STAGES.ASK_CREDENTIAL_NAME;
           break;
         }
 
@@ -168,7 +170,54 @@ class BotService {
         session.stage = STAGES.START;
         break;
 
-      case STAGES.ASK_LOGIN: {
+      case STAGES.ASK_CREDENTIAL_NAME:
+        if (!text || text.trim().length < 2) {
+          await sendText('Por favor, informe um nome válido para continuar.');
+          await this.sendEndConversationOption(sendButtons);
+          break;
+        }
+
+        session.credentialName = text.trim();
+        await sendText('Ótimo! Agora envie os *4 últimos dígitos* da sua credencial:');
+        await this.sendEndConversationOption(sendButtons);
+        session.stage = STAGES.ASK_CREDENTIAL_LAST4;
+        break;
+
+      case STAGES.ASK_CREDENTIAL_LAST4: {
+        const last4 = this.sanitizeLast4(text);
+        if (last4.length !== 4) {
+          await sendText('Os últimos 4 dígitos precisam ter exatamente 4 números. Tente novamente:');
+          await this.sendEndConversationOption(sendButtons);
+          break;
+        }
+
+        try {
+          const resolved = await integrationsService.resolveCredentialFromApi({
+            nome: session.credentialName,
+            last4
+          });
+
+          const serverChoices = this.buildServerChoices(resolved.servers || []);
+          if (!serverChoices.length) {
+            await sendText('⚠️ Sua credencial não possui servidores ativos vinculados.');
+            session.stage = STAGES.START;
+            break;
+          }
+
+          session.credential = resolved.credential;
+          session.serverChoices = serverChoices;
+          session.serverPage = await this.sendServerList(sendList, serverChoices, 0, true);
+          session.stage = STAGES.ASK_SERVER;
+          break;
+        } catch (error) {
+          console.error('Erro ao resolver credencial no bot:', error);
+          await sendText('❌ Não consegui validar essa credencial. Confira nome + últimos 4 dígitos e tente novamente.');
+          session.stage = STAGES.ASK_CREDENTIAL_NAME;
+          break;
+        }
+      }
+
+      case STAGES.ASK_SERVER: {
         if (text === SERVER_NEXT_PAGE_ID && Array.isArray(session.serverChoices) && session.serverChoices.length > 0) {
           const totalPages = Math.max(1, Math.ceil(session.serverChoices.length / SERVER_LIST_PAGE_SIZE));
           const nextPage = ((session.serverPage || 0) + 1) % totalPages;
@@ -181,9 +230,10 @@ class BotService {
         if (selectedServer) {
           session.panel_id = selectedServer.serverId;
           session.panel_name = selectedServer.serverName;
-          await sendText(`Perfeito! Painel *${session.panel_name}* selecionado.\n\n⚠️ Agora, por favor, me informe o seu *Login* ou *Nº da Conta*:`);
+          session.unitPrice = Number(selectedServer.unitPrice);
+          await sendText(`Perfeito! Servidor *${session.panel_name}* selecionado.\n\nAgora me informe o *Login / Nº da Conta* para recarga:`);
           await this.sendEndConversationOption(sendButtons);
-          session.stage = STAGES.ASK_QUANTITY;
+          session.stage = STAGES.ASK_ACCOUNT;
           break;
         }
 
@@ -198,12 +248,12 @@ class BotService {
         break;
       }
 
-      case STAGES.ASK_QUANTITY:
+      case STAGES.ASK_ACCOUNT:
         if (text && text.length >= 2) {
           session.login = text;
           await sendText(`Conta *${session.login}* identificada! ✅\n\nQuantos créditos você deseja recarregar hoje? (Ex: 1, 3, 10...)`);
           await this.sendEndConversationOption(sendButtons);
-          session.stage = STAGES.ASK_PAYMENT;
+          session.stage = STAGES.ASK_QUANTITY;
           break;
         }
 
@@ -211,43 +261,59 @@ class BotService {
         await this.sendEndConversationOption(sendButtons);
         break;
 
-      case STAGES.ASK_PAYMENT: {
-        const qty = parseInt(text, 10);
+      case STAGES.ASK_QUANTITY:
+        if (text && text.length >= 1) {
+          const qty = parseInt(text, 10);
+          if (Number.isNaN(qty) || qty <= 0) {
+            await sendText('⚠️ Por favor, digite um número inteiro para a quantidade de créditos.');
+            await this.sendEndConversationOption(sendButtons);
+            break;
+          }
 
-        if (Number.isNaN(qty) || qty <= 0) {
-          await sendText('⚠️ Por favor, digite um número inteiro para a quantidade de créditos.');
-          await this.sendEndConversationOption(sendButtons);
+          session.quantity = qty;
+          session.total = Number((qty * Number(session.unitPrice || 0)).toFixed(2));
+
+          const summary = [
+            '📊 *RESUMO DO PEDIDO*',
+            '━━━━━━━━━━━━━━',
+            `👤 *Usuário:* ${session.credential?.nome || session.credentialName} (${session.credential?.last4 || '****'})`,
+            `🔹 *Servidor:* ${session.panel_name}`,
+            `🔹 *Conta:* ${session.login}`,
+            `🔹 *Quantidade:* ${qty} unidade(s)`,
+            `💳 *Valor unitário:* ${this.formatMoney(session.unitPrice)}`,
+            `💰 *Total:* ${this.formatMoney(session.total)}`,
+            '━━━━━━━━━━━━━━',
+            'Selecione a forma de pagamento abaixo:'
+          ].join('\n');
+
+          await sendButtons(summary, [
+            { id: '1', title: 'PIX ⚡ (Instantâneo)' },
+            { id: '2', title: 'CRIPTO ₿' }
+          ]);
+          session.stage = STAGES.ASK_PAYMENT;
           break;
         }
 
-        session.quantity = qty;
-        session.total = qty * PRICE_PER_UNIT;
-        const totalStr = session.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-
-        const summary = [
-          '📊 *RESUMO DO PEDIDO*',
-          '━━━━━━━━━━━━━━',
-          `🔹 *Painel:* ${session.panel_name}`,
-          `🔹 *Conta:* ${session.login}`,
-          `🔹 *Quantidade:* ${qty} unidade(s)`,
-          `💰 *Total:* ${totalStr}`,
-          '━━━━━━━━━━━━━━',
-          'Selecione a forma de pagamento abaixo:'
-        ].join('\n');
-
-        await sendButtons(summary, [
-          { id: '1', title: 'PIX ⚡ (Instantâneo)' },
-          { id: '2', title: 'CRIPTO ₿' }
-        ]);
-        session.stage = STAGES.COMPLETING;
+        await sendText('Informe uma quantidade válida para continuar.');
+        await this.sendEndConversationOption(sendButtons);
         break;
-      }
 
-      case STAGES.COMPLETING:
+      case STAGES.ASK_PAYMENT:
         if (text === '1') {
           await sendText('⏳ *Aguarde um momento...* Estou gerando o seu código Pix exclusivo para esta transação.');
 
           try {
+            const rechargeRequest = await integrationsService.createRechargeRequest({
+              credentialId: session.credential?.id,
+              serverId: session.panel_id,
+              accountLogin: session.login,
+              quantity: session.quantity,
+              unitPrice: session.unitPrice,
+              paymentMethod: 'pix',
+              requestedByPhone: from
+            });
+
+            session.rechargeRequestId = rechargeRequest.id;
             const paymentResult = await integrationsService.callPaymentApi({
               provider: 'efi',
               method: 'pix',
@@ -271,9 +337,18 @@ class BotService {
               throw new Error('API não retornou o código Pix.');
             }
 
+            await integrationsService.updateRechargeRequestPayment(session.rechargeRequestId, {
+              paymentStatus: 'pix_gerado',
+              paymentMethod: 'pix',
+              pixCode: paymentResult.copy_paste,
+              pixTxid: paymentResult.txid || paymentResult.id || null
+            });
+
             await sendText('✅ *Pix gerado com sucesso!*');
+            await sendText(`🧾 Solicitação de recarga: *${session.rechargeRequestId}*`);
             await sendText(`Copia e Cola:\n\n\`${paymentResult.copy_paste}\``);
             await sendText('Clique no código acima para copiar, pague no seu banco e o acesso será liberado em instantes! 🚀');
+            session.stage = STAGES.COMPLETING;
             break;
           } catch (error) {
             console.error('Erro ao gerar Pix no bot:', error);
@@ -281,17 +356,55 @@ class BotService {
             await sendText('❌ *Erro Temporário:* Não consegui gerar o código dinâmico agora.');
             await sendText(`Mas não se preocupe! Você pode pagar usando nossa *Chave Pix Fixa* abaixo:\n\n🔑 \`${pixKey}\``);
             await sendText('Após pagar, envie o comprovante aqui para agilizar seu processo.');
+            session.stage = STAGES.COMPLETING;
             break;
           }
         }
 
         if (text === '2') {
+          try {
+            const rechargeRequest = await integrationsService.createRechargeRequest({
+              credentialId: session.credential?.id,
+              serverId: session.panel_id,
+              accountLogin: session.login,
+              quantity: session.quantity,
+              unitPrice: session.unitPrice,
+              paymentMethod: 'cripto',
+              requestedByPhone: from
+            });
+            session.rechargeRequestId = rechargeRequest.id;
+          } catch (error) {
+            console.error('Erro ao criar recarga cripto no bot:', error);
+          }
+
           const criptoWallet = process.env.CRIPTO_WALLET || 'SUA_CARTEIRA_CRIPTO_AQUI';
+          if (session.rechargeRequestId) {
+            await sendText(`🧾 Solicitação de recarga: *${session.rechargeRequestId}*`);
+          }
           await sendText(`💎 *Pagamento via Cripto*\n\nDeposite na carteira abaixo:\n\n\`${criptoWallet}\`\n\nApós o envio, encaminhe o comprovante aqui.`);
+          session.stage = STAGES.COMPLETING;
           break;
         }
 
+        await sendButtons('Selecione a forma de pagamento para continuar 👇', [
+          { id: '1', title: 'PIX ⚡' },
+          { id: '2', title: 'CRIPTO ₿' }
+        ]);
+        break;
+
+      case STAGES.COMPLETING:
+
         if (text?.toLowerCase().includes('comprovante') || text?.includes('✅') || text?.toLowerCase() === 'paguei') {
+          if (session.rechargeRequestId) {
+            try {
+              await integrationsService.updateRechargeRequestPayment(session.rechargeRequestId, {
+                paymentStatus: 'pago'
+              });
+            } catch (error) {
+              console.error('Erro ao atualizar status de pagamento da recarga:', error);
+            }
+          }
+
           await sendText('Recebemos sua mensagem! Nosso sistema está verificando o pagamento. ⏳');
           setTimeout(async () => {
             await sendText('RECARGA FINALIZADA ✅\n\n*Acesso Liberado!* Muito obrigado por escolher a PulsePay. 🤝');
@@ -300,10 +413,8 @@ class BotService {
           break;
         }
 
-        await sendButtons('Como deseja finalizar o seu pagamento? 👇', [
-          { id: '1', title: 'PIX ⚡' },
-          { id: '2', title: 'CRIPTO ₿' }
-        ]);
+        await sendText('Quando finalizar o pagamento, envie aqui: *paguei* ou o comprovante para concluirmos sua recarga.');
+        await this.sendEndConversationOption(sendButtons);
         break;
 
       default:

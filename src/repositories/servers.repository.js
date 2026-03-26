@@ -7,6 +7,7 @@ class ServersRepository {
     return {
       id: row.id,
       servidor: row.servidor,
+      basePrice: Number(row.base_price),
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -23,14 +24,28 @@ class ServersRepository {
   }
 
   async create(server) {
-    const [row] = await db('servers').insert(server).returning('*');
+    const payload = {
+      ...server,
+      base_price: server.basePrice
+    };
+
+    delete payload.basePrice;
+    const [row] = await db('servers').insert(payload).returning('*');
     return this.mapRow(row);
   }
 
   async update(id, updates) {
+    const payload = {
+      ...updates,
+      base_price: updates.basePrice,
+      updated_at: db.fn.now()
+    };
+
+    delete payload.basePrice;
+
     const [row] = await db('servers')
       .where({ id })
-      .update({ ...updates, updated_at: db.fn.now() })
+      .update(payload)
       .returning('*');
 
     return this.mapRow(row);
