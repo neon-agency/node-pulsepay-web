@@ -1,5 +1,7 @@
 const sessionsRepository = require('../repositories/bot-sessions.repository');
 const integrationsService = require('./bot-integrations.service');
+const credentialsService = require('./credentials.service');
+const rechargeRequestsService = require('./recharge-requests.service');
 
 const STAGES = {
   START: 'START',
@@ -192,7 +194,7 @@ class BotService {
         }
 
         try {
-          const resolved = await integrationsService.resolveCredentialFromApi({
+          const resolved = await credentialsService.resolveCredentialWithServers({
             nome: session.credentialName,
             last4
           });
@@ -305,7 +307,7 @@ class BotService {
           await sendText('⏳ *Aguarde um momento...* Estou gerando o seu código Pix exclusivo para esta transação.');
 
           try {
-            const rechargeRequest = await integrationsService.createRechargeRequest({
+            const rechargeRequest = await rechargeRequestsService.create({
               credentialId: session.credential?.id,
               serverId: session.panel_id,
               accountLogin: session.login,
@@ -339,7 +341,7 @@ class BotService {
               throw new Error('API não retornou o código Pix.');
             }
 
-            await integrationsService.updateRechargeRequestPayment(session.rechargeRequestId, {
+            await rechargeRequestsService.updatePayment(session.rechargeRequestId, {
               paymentStatus: 'pix_gerado',
               paymentMethod: 'pix',
               pixCode: paymentResult.copy_paste,
@@ -365,7 +367,7 @@ class BotService {
 
         if (text === '2') {
           try {
-            const rechargeRequest = await integrationsService.createRechargeRequest({
+            const rechargeRequest = await rechargeRequestsService.create({
               credentialId: session.credential?.id,
               serverId: session.panel_id,
               accountLogin: session.login,
@@ -399,7 +401,7 @@ class BotService {
         if (text?.toLowerCase().includes('comprovante') || text?.includes('✅') || text?.toLowerCase() === 'paguei') {
           if (session.rechargeRequestId) {
             try {
-              await integrationsService.updateRechargeRequestPayment(session.rechargeRequestId, {
+              await rechargeRequestsService.updatePayment(session.rechargeRequestId, {
                 paymentStatus: 'pago'
               });
             } catch (error) {
