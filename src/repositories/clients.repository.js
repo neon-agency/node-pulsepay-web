@@ -1,5 +1,5 @@
 const db = require('../database/knex');
-const { normalizeBrMsisdn } = require('../utils/phone');
+const { msisdnBrMatches } = require('../utils/phone');
 
 class ClientsRepository {
   mapRow(row) {
@@ -36,13 +36,10 @@ class ClientsRepository {
   }
 
   async findByMsisdnMatch(incomingDigits) {
-    const target = normalizeBrMsisdn(incomingDigits);
-    if (target.length < 10) return null;
-
     const rows = await db('clients').select('*');
     for (const row of rows) {
-      const stored = normalizeBrMsisdn(row.telefone || '');
-      if (stored && stored === target) {
+      if (!row.telefone) continue;
+      if (msisdnBrMatches(incomingDigits, row.telefone)) {
         return this.mapRow(row);
       }
     }
