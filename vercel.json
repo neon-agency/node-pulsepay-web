@@ -1,7 +1,7 @@
 {
   "rewrites": [
     {
-      "source": "/api/(auth|servers|clients)(.*)",
+      "source": "/api/(auth|servers|clients|dashboard)(.*)",
       "destination": "/api"
     },
     {

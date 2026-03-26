@@ -88,6 +88,34 @@ class BotIntegrationsService {
     });
   }
 
+  async sendWhatsAppList(to, message, buttonText, rows) {
+    const { whatsappServiceUrl } = this.getUrls();
+    const config = this.getBotConfig();
+
+    await this.makeRequest(`${whatsappServiceUrl}/v1/messages/send`, {
+      method: 'POST',
+      payload: {
+        phone_number_id: config.phone_number_id,
+        access_token: config.access_token,
+        to,
+        type: 'interactive',
+        interactive_type: 'list',
+        message,
+        button_text: buttonText,
+        sections: [
+          {
+            title: 'Servidores',
+            rows: rows.map((row) => ({
+              id: row.id,
+              title: row.title,
+              description: row.description || ''
+            }))
+          }
+        ]
+      }
+    });
+  }
+
   async callPaymentApi(payload) {
     const { paymentServiceUrl } = this.getUrls();
     const body = await this.makeRequest(`${paymentServiceUrl}/api/v1/payments`, {

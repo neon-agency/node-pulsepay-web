@@ -11,8 +11,6 @@ const STAGES = {
 };
 
 const PRICE_PER_UNIT = 10.00;
-const SERVER_BUTTONS_PAGE_SIZE = 2;
-const SERVER_NEXT_PAGE_ID = 'server:more';
 
 class BotService {
   normalizeServerButtonTitle(name) {
@@ -21,9 +19,8 @@ class BotService {
   }
 
   buildServerChoices(servers) {
-    return (servers || []).map((server, index) => ({
+    return (servers || []).map((server) => ({
       buttonId: `server:${server.id}`,
-      numericId: String(index + 1),
       title: this.normalizeServerButtonTitle(server.servidor),
       serverId: String(server.id),
       serverName: String(server.servidor || '').trim()
@@ -32,38 +29,23 @@ class BotService {
 
   resolveServerSelection(serverChoices, input) {
     if (!Array.isArray(serverChoices) || !input) return null;
-    return serverChoices.find((choice) => choice.buttonId === input || choice.numericId === input) || null;
+    return serverChoices.find((choice) => choice.buttonId === input) || null;
   }
 
-  getServerPageButtons(serverChoices, page = 0) {
-    const start = page * SERVER_BUTTONS_PAGE_SIZE;
-    const end = start + SERVER_BUTTONS_PAGE_SIZE;
-    const pageChoices = serverChoices.slice(start, end);
-    const hasMore = end < serverChoices.length;
-
-    const buttons = pageChoices.map((choice) => ({
-      id: choice.buttonId,
-      title: choice.title
-    }));
-
-    if (hasMore) {
-      buttons.push({ id: SERVER_NEXT_PAGE_ID, title: '➡️ Mais' });
-    }
-
-    return buttons;
-  }
-
-  async sendServerButtons(sendButtons, serverChoices, page, isFirstPrompt = false) {
-    const totalPages = Math.max(1, Math.ceil(serverChoices.length / SERVER_BUTTONS_PAGE_SIZE));
-    const safePage = Math.max(0, Math.min(page, totalPages - 1));
-    const buttons = this.getServerPageButtons(serverChoices, safePage);
-
+  async sendServerList(sendList, serverChoices, isFirstPrompt = false) {
     const title = isFirstPrompt
-      ? `Excelente! 🚀 Primeiramente, selecione o *Servidor* que você deseja recarregar:\n\nPágina ${safePage + 1}/${totalPages}`
-      : `Selecione um servidor 👇\n\nPágina ${safePage + 1}/${totalPages}`;
+      ? 'Excelente! 🚀 Primeiramente, selecione o *Servidor* que você deseja recarregar:'
+      : 'Selecione um servidor 👇';
 
-    await sendButtons(title, buttons);
-    return safePage;
+    await sendList(
+      title,
+      'Ver servidores',
+      serverChoices.map((choice) => ({
+        id: choice.buttonId,
+        title: choice.title,
+        description: choice.serverName
+      }))
+    );
   }
 
   async processIncomingMessage({ from, text }) {
@@ -71,6 +53,7 @@ class BotService {
 
     const sendText = async (message) => integrationsService.sendWhatsAppText(from, message);
     const sendButtons = async (message, buttons) => integrationsService.sendWhatsAppButtons(from, message, buttons);
+    const sendList = async (message, buttonText, rows) => integrationsService.sendWhatsAppList(from, message, buttonText, rows);
 
     if (text?.toLowerCase() === 'reset' || text?.toLowerCase() === 'voltar' || text?.toLowerCase() === 'cancelar') {
       session.stage = STAGES.START;
@@ -109,8 +92,7 @@ class BotService {
           }
 
           session.serverChoices = serverChoices;
-          session.serverPage = 0;
-          session.serverPage = await this.sendServerButtons(sendButtons, serverChoices, session.serverPage, true);
+          await this.sendServerList(sendList, serverChoices, true);
 
           session.stage = STAGES.ASK_LOGIN;
           break;
@@ -127,13 +109,6 @@ class BotService {
         break;
 
       case STAGES.ASK_LOGIN: {
-        if (text === SERVER_NEXT_PAGE_ID && Array.isArray(session.serverChoices) && session.serverChoices.length > 0) {
-          const totalPages = Math.max(1, Math.ceil(session.serverChoices.length / SERVER_BUTTONS_PAGE_SIZE));
-          const nextPage = ((session.serverPage || 0) + 1) % totalPages;
-          session.serverPage = await this.sendServerButtons(sendButtons, session.serverChoices, nextPage, false);
-          break;
-        }
-
         const selectedServer = this.resolveServerSelection(session.serverChoices, text);
 
         if (selectedServer) {
@@ -145,8 +120,8 @@ class BotService {
         }
 
         if (Array.isArray(session.serverChoices) && session.serverChoices.length > 0) {
-          await sendText('Ops! Escolha uma opção pelos botões abaixo.');
-          session.serverPage = await this.sendServerButtons(sendButtons, session.serverChoices, session.serverPage || 0, false);
+          await sendText('Ops! Escolha uma opção na lista de servidores.');
+          await this.sendServerList(sendList, session.serverChoices, false);
           break;
         }
 
