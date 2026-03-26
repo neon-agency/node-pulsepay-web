@@ -15,7 +15,7 @@ app.get('/health', (_req, res) => {
 
 app.use('/api/auth', authRoutes);
 
-app.use('/api/servers', authMiddleware, serversRoutes);
+app.use('/api/servers', serversRoutes);
 app.use('/api/clients', authMiddleware, clientsRoutes);
 
 app.use(errorHandler);
