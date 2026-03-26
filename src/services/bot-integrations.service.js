@@ -2,10 +2,6 @@ const http = require('http');
 const https = require('https');
 
 class BotIntegrationsService {
-  constructor() {
-    this.internalApiAuthCache = { token: null, expiresAt: 0 };
-  }
-
   getBotConfig() {
     return {
       phone_number_id: process.env.BOT_PHONE_NUMBER_ID || 'PENDING_ID',
@@ -24,17 +20,6 @@ class BotIntegrationsService {
       paymentServiceUrl: process.env.PAYMENT_SERVICE_URL || 'https://go-payment-825906875083.europe-west1.run.app',
       internalApiBaseUrl: process.env.INTERNAL_API_BASE_URL || defaultVercelUrl || `http://localhost:${process.env.API_PORT || 3001}`
     };
-  }
-
-  getInternalApiCredentials() {
-    return {
-      email: process.env.API_LOGIN_EMAIL || 'admin@pulsepay.com',
-      password: process.env.API_LOGIN_PASSWORD || 'pulsepay123'
-    };
-  }
-
-  getInternalApiKey() {
-    return process.env.INTERNAL_API_KEY || '';
   }
 
   async makeRequest(url, { method = 'POST', payload, headers = {} } = {}) {
@@ -117,48 +102,9 @@ class BotIntegrationsService {
     }
   }
 
-  async getInternalApiAuthToken() {
-    if (this.internalApiAuthCache.token && this.internalApiAuthCache.expiresAt > Date.now()) {
-      return this.internalApiAuthCache.token;
-    }
-
-    const { internalApiBaseUrl } = this.getUrls();
-    const credentials = this.getInternalApiCredentials();
-
-    const body = await this.makeRequest(`${internalApiBaseUrl}/api/auth/login`, {
-      method: 'POST',
-      payload: credentials
-    });
-
-    let parsed;
-    try {
-      parsed = JSON.parse(body);
-    } catch (_error) {
-      throw new Error(`Resposta inválida no login da API: ${body}`);
-    }
-
-    if (!parsed?.token) {
-      throw new Error('Token não retornado pela API de autenticação');
-    }
-
-    const expiresAt = parsed.expiresAt
-      ? new Date(parsed.expiresAt).getTime()
-      : Date.now() + (7 * 60 * 60 * 1000);
-
-    this.internalApiAuthCache = { token: parsed.token, expiresAt };
-    return parsed.token;
-  }
-
   async fetchServersFromApi() {
     const { internalApiBaseUrl } = this.getUrls();
-    const internalApiKey = this.getInternalApiKey();
-
-    if (internalApiKey) {
-      const body = await this.makeRequest(`${internalApiBaseUrl}/api/servers`, {
-        method: 'GET',
-        headers: { 'x-internal-api-key': internalApiKey }
-      });
-
+    const parseServersResponse = (body) => {
       let parsed;
       try {
         parsed = JSON.parse(body);
@@ -171,27 +117,12 @@ class BotIntegrationsService {
       }
 
       return parsed;
-    }
-
-    const token = await this.getInternalApiAuthToken();
+    };
 
     const body = await this.makeRequest(`${internalApiBaseUrl}/api/servers`, {
-      method: 'GET',
-      headers: { Authorization: `Bearer ${token}` }
+      method: 'GET'
     });
-
-    let parsed;
-    try {
-      parsed = JSON.parse(body);
-    } catch (_error) {
-      throw new Error(`Resposta inválida ao consultar servidores: ${body}`);
-    }
-
-    if (!Array.isArray(parsed)) {
-      throw new Error('A API de servidores retornou um formato inesperado');
-    }
-
-    return parsed;
+    return parseServersResponse(body);
   }
 }
 
