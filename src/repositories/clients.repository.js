@@ -1,5 +1,4 @@
 const db = require('../database/knex');
-const { msisdnBrMatches } = require('../utils/phone');
 
 class ClientsRepository {
   mapRow(row) {
@@ -33,17 +32,6 @@ class ClientsRepository {
   async findByEmail(email) {
     const row = await db('clients').whereRaw('LOWER(email) = ?', [String(email).toLowerCase()]).first();
     return this.mapRow(row);
-  }
-
-  async findByMsisdnMatch(incomingDigits) {
-    const rows = await db('clients').select('*');
-    for (const row of rows) {
-      if (!row.telefone) continue;
-      if (msisdnBrMatches(incomingDigits, row.telefone)) {
-        return this.mapRow(row);
-      }
-    }
-    return null;
   }
 
   async create(client) {

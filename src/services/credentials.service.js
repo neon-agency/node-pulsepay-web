@@ -5,7 +5,6 @@ const credentialsRepository = require('../repositories/credentials.repository');
 const credentialServersRepository = require('../repositories/credential-servers.repository');
 const serversRepository = require('../repositories/servers.repository');
 const clientsRepository = require('../repositories/clients.repository');
-const { sanitizeTelefone, isValidTelefone } = require('../utils/phone');
 const {
   normalizeCredentialName,
   sanitizeLast4,
@@ -166,27 +165,27 @@ class CredentialsService {
   async resolveCredentialWithServers(payload) {
     const nome = String(payload?.nome || '').trim();
     const last4 = sanitizeLast4(payload?.last4);
-    const telefoneDigits = sanitizeTelefone(
-      payload?.telefone ?? payload?.telefoneWhatsapp ?? payload?.from
-    );
 
     if (!nome || last4.length !== 4) {
       throw new AppError('Informe nome e 4 últimos dígitos válidos', 400);
     }
 
-    if (!isValidTelefone(telefoneDigits)) {
-      throw new AppError('Telefone do cliente inválido ou ausente', 400);
-    }
-
-    const client = await clientsRepository.findByMsisdnMatch(telefoneDigits);
-    if (!client) {
-      throw new AppError('Nenhum cliente cadastrado com este telefone', 404);
-    }
-
     const key = buildCredentialKey(normalizeCredentialName(nome), last4);
-    const credential = await credentialsRepository.findByClientIdAndCredentialKey(client.id, key);
-    if (!credential) {
-      throw new AppError('Credencial não encontrada para este cliente', 404);
+    const matches = await credentialsRepository.findAllByCredentialKey(key);
+    if (matches.length === 0) {
+      throw new AppError('Credencial não encontrada', 404);
+    }
+    if (matches.length > 1) {
+      throw new AppError(
+        'Existem várias credenciais com esse nome e últimos dígitos; contate o suporte.',
+        409
+      );
+    }
+
+    const credential = matches[0];
+    const client = await clientsRepository.findById(credential.clientId);
+    if (!client) {
+      throw new AppError('Cliente da credencial não encontrado', 500);
     }
 
     const links = await credentialServersRepository.findByCredentialIdWithServers(credential.id);

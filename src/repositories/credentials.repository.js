@@ -64,6 +64,25 @@ class CredentialsRepository {
     return this.mapRow(row);
   }
 
+  async findAllByCredentialKey(credentialKey) {
+    const rows = await db('credentials as c')
+      .leftJoin('clients as cl', 'c.client_id', 'cl.id')
+      .select(
+        'c.id',
+        'c.nome',
+        'c.last4',
+        'c.nome_normalized',
+        'c.credential_key',
+        'c.client_id',
+        'c.created_at',
+        'c.updated_at',
+        'cl.nome as client_nome',
+        'cl.telefone as client_telefone'
+      )
+      .where('c.credential_key', credentialKey);
+    return rows.map((row) => this.mapRow(row));
+  }
+
   async create(credential) {
     const payload = {
       id: credential.id,
