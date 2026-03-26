@@ -29,7 +29,7 @@ const PRICE_PER_UNIT = 10.00; // R$ 10,00
 async function makeRequest(url, payload) {
   const data = JSON.stringify(payload);
   const protocol = url.startsWith('https') ? https : http;
-  
+
   const options = {
     method: 'POST',
     headers: {
@@ -37,7 +37,7 @@ async function makeRequest(url, payload) {
       'Content-Length': Buffer.byteLength(data),
     },
   };
-  
+
   return new Promise((resolve, reject) => {
     const req = protocol.request(url, options, (res) => {
       let body = '';
@@ -49,7 +49,7 @@ async function makeRequest(url, payload) {
         resolve(body);
       });
     });
-    
+
     req.on('error', (e) => reject(e));
     req.write(data);
     req.end();
@@ -90,12 +90,12 @@ async function handleWebhook(body) {
 
   const value = jsonPayload.entry?.[0]?.changes?.[0]?.value;
   const message = value?.messages?.[0];
-  
+
   if (!message) return;
 
   const from = message.from;
   let text = message.text?.body?.trim();
-  
+
   // Tratamento de botões iterativos
   if (message.type === 'interactive') {
     const interactive = message.interactive;
@@ -145,7 +145,7 @@ async function handleWebhook(body) {
   switch (session.stage) {
     case STAGES.START:
       await sendButtons(
-        "Olá! 👋 Bem-vindo ao *Atendimento Inteligente PulsePay*.\n\nSua renovação de planos de forma simples e rápida. Como posso ajudar?", 
+        "Olá! 👋 Bem-vindo ao *Atendimento Inteligente PulsePay*.\n\nSua renovação de planos de forma simples e rápida. Como posso ajudar?",
         [
           { id: '1', title: '⚡ NOVA RECARGA' },
           { id: '2', title: '❓ DÚVIDAS' }
@@ -157,11 +157,12 @@ async function handleWebhook(body) {
     case STAGES.ASK_PANEL:
       if (text === '1') {
         await sendButtons(
-          "Excelente! 🚀 Primeiramente, selecione o *Painel* que você deseja recarregar:", 
+          "Excelente! 🚀 Primeiramente, selecione o *Painel* que você deseja recarregar:",
           [
             { id: '1', title: 'UNITV' },
             { id: '2', title: 'Club' },
-            { id: '3', title: 'Fast' }
+            { id: '3', title: 'Fast' },
+            { id: '4', title: 'sdsdsd' }
           ]
         );
         session.stage = STAGES.ASK_LOGIN;
@@ -184,7 +185,8 @@ async function handleWebhook(body) {
         await sendButtons("Ops! Selecione um painel clicando em um dos botões abaixo: 👇", [
           { id: '1', title: 'UNITV' },
           { id: '2', title: 'Club' },
-          { id: '3', title: 'Fast' }
+          { id: '3', title: 'Fast' },
+          { id: '4', title: 'sdsdsd' }
         ]);
       }
       break;
@@ -206,7 +208,7 @@ async function handleWebhook(body) {
         const total = qty * PRICE_PER_UNIT;
         session.total = total;
         const totalStr = total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-        
+
         const summary = [
           `📊 *RESUMO DO PEDIDO*`,
           `━━━━━━━━━━━━━━`,
@@ -231,24 +233,24 @@ async function handleWebhook(body) {
     case STAGES.COMPLETING:
       if (text === '1') {
         await sendText("⏳ *Aguarde um momento...* Estou gerando o seu código Pix exclusivo para esta transação.");
-        
+
         try {
           const paymentResult = await callPaymentAPI({
-            provider: "efi", 
-            method: "pix", 
+            provider: "efi",
+            method: "pix",
             amount: Math.round(session.total * 100), // Converte para centavos
             currency: "BRL",
             description: `Renovação ${session.panel_name} - ${session.login}`,
             pix_key: config.pix_key, // MANDATÓRIO para funcionar na EFI
-            customer: { 
-              name: `WhatsApp ${from}`, 
-              email: `${from}@whatsapp.com`, 
-              cpf: "00000000000" 
+            customer: {
+              name: `WhatsApp ${from}`,
+              email: `${from}@whatsapp.com`,
+              cpf: "00000000000"
             },
-            metadata: { 
-              login: session.login, 
+            metadata: {
+              login: session.login,
               phone: from,
-              plan_id: session.panel_id 
+              plan_id: session.panel_id
             }
           });
 
@@ -265,17 +267,17 @@ async function handleWebhook(body) {
           await sendText(`Mas não se preocupe! Você pode pagar usando nossa *Chave Pix Fixa* abaixo:\n\n🔑 \`${config.pix_key}\``);
           await sendText("Após pagar, envie o comprovante aqui para agilizar seu processo.");
         }
-        
+
       } else if (text === '2') {
         const criptoWallet = process.env.CRIPTO_WALLET || 'SUA_CARTEIRA_CRIPTO_AQUI';
         await sendText(`💎 *Pagamento via Cripto*\n\nDeposite na carteira abaixo:\n\n\`${criptoWallet}\`\n\nApós o envio, encaminhe o comprovante aqui.`);
       } else if (text.toLowerCase().includes('comprovante') || text.includes('✅') || text.toLowerCase() === 'paguei') {
         await sendText("Recebemos sua mensagem! Nosso sistema está verificando o pagamento. ⏳");
-        
+
         setTimeout(async () => {
           await sendText("RECARGA FINALIZADA ✅\n\n*Acesso Liberado!* Muito obrigado por escolher a PulsePay. 🤝");
         }, 5000);
-        
+
         session.stage = STAGES.START;
       } else {
         await sendButtons("Como deseja finalizar o seu pagamento? 👇", [
