@@ -20,7 +20,8 @@ const STAGES = {
 const PANELS = {
   '1': 'UNITV',
   '2': 'Club',
-  '3': 'Fast'
+  '3': 'Fast',
+  '4': 'sdsdsd'
 };
 
 const PRICE_PER_UNIT = 10.00; // R$ 10,00
