@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/api/(auth|servers|clients)(.*)",
+      "destination": "/api"
+    },
+    {
       "source": "/config.js",
       "destination": "/api/config"
     },
