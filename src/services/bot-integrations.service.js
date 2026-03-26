@@ -1,0 +1,168 @@
+const http = require('http');
+const https = require('https');
+
+class BotIntegrationsService {
+  constructor() {
+    this.internalApiAuthCache = { token: null, expiresAt: 0 };
+  }
+
+  getBotConfig() {
+    return {
+      phone_number_id: process.env.BOT_PHONE_NUMBER_ID || 'PENDING_ID',
+      access_token: process.env.BOT_ACCESS_TOKEN || 'PENDING_TOKEN',
+      pix_key: process.env.PIX_KEY || 'b0944752-7136-49ef-920a-0d21a3aa4be5'
+    };
+  }
+
+  getUrls() {
+    return {
+      whatsappServiceUrl: process.env.WHATSAPP_SERVICE_URL || 'http://localhost:8082',
+      paymentServiceUrl: process.env.PAYMENT_SERVICE_URL || 'https://go-payment-825906875083.europe-west1.run.app',
+      internalApiBaseUrl: process.env.INTERNAL_API_BASE_URL || `http://localhost:${process.env.API_PORT || 3001}`
+    };
+  }
+
+  getInternalApiCredentials() {
+    return {
+      email: process.env.API_LOGIN_EMAIL || 'admin@pulsepay.com',
+      password: process.env.API_LOGIN_PASSWORD || 'pulsepay123'
+    };
+  }
+
+  async makeRequest(url, { method = 'POST', payload, headers = {} } = {}) {
+    const hasPayload = payload !== undefined && payload !== null;
+    const data = hasPayload ? JSON.stringify(payload) : null;
+    const protocol = url.startsWith('https') ? https : http;
+
+    const options = {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(hasPayload ? { 'Content-Length': Buffer.byteLength(data) } : {}),
+        ...headers
+      }
+    };
+
+    return new Promise((resolve, reject) => {
+      const req = protocol.request(url, options, (res) => {
+        let body = '';
+        res.on('data', (chunk) => body += chunk);
+        res.on('end', () => {
+          if (res.statusCode >= 400) {
+            return reject(new Error(`Status ${res.statusCode}: ${body}`));
+          }
+          resolve(body);
+        });
+      });
+
+      req.on('error', (error) => reject(error));
+      if (data) req.write(data);
+      req.end();
+    });
+  }
+
+  async sendWhatsAppText(to, message) {
+    const { whatsappServiceUrl } = this.getUrls();
+    const config = this.getBotConfig();
+
+    await this.makeRequest(`${whatsappServiceUrl}/v1/messages/send`, {
+      method: 'POST',
+      payload: {
+        phone_number_id: config.phone_number_id,
+        access_token: config.access_token,
+        to,
+        type: 'text',
+        message
+      }
+    });
+  }
+
+  async sendWhatsAppButtons(to, message, buttons) {
+    const { whatsappServiceUrl } = this.getUrls();
+    const config = this.getBotConfig();
+
+    await this.makeRequest(`${whatsappServiceUrl}/v1/messages/send`, {
+      method: 'POST',
+      payload: {
+        phone_number_id: config.phone_number_id,
+        access_token: config.access_token,
+        to,
+        type: 'interactive',
+        interactive_type: 'button',
+        message,
+        buttons: buttons.map((item) => ({ id: item.id, title: item.title }))
+      }
+    });
+  }
+
+  async callPaymentApi(payload) {
+    const { paymentServiceUrl } = this.getUrls();
+    const body = await this.makeRequest(`${paymentServiceUrl}/api/v1/payments`, {
+      method: 'POST',
+      payload
+    });
+
+    try {
+      return JSON.parse(body);
+    } catch (_error) {
+      throw new Error(`Erro ao processar resposta do serviço de pagamento: ${body}`);
+    }
+  }
+
+  async getInternalApiAuthToken() {
+    if (this.internalApiAuthCache.token && this.internalApiAuthCache.expiresAt > Date.now()) {
+      return this.internalApiAuthCache.token;
+    }
+
+    const { internalApiBaseUrl } = this.getUrls();
+    const credentials = this.getInternalApiCredentials();
+
+    const body = await this.makeRequest(`${internalApiBaseUrl}/api/auth/login`, {
+      method: 'POST',
+      payload: credentials
+    });
+
+    let parsed;
+    try {
+      parsed = JSON.parse(body);
+    } catch (_error) {
+      throw new Error(`Resposta inválida no login da API: ${body}`);
+    }
+
+    if (!parsed?.token) {
+      throw new Error('Token não retornado pela API de autenticação');
+    }
+
+    const expiresAt = parsed.expiresAt
+      ? new Date(parsed.expiresAt).getTime()
+      : Date.now() + (7 * 60 * 60 * 1000);
+
+    this.internalApiAuthCache = { token: parsed.token, expiresAt };
+    return parsed.token;
+  }
+
+  async fetchServersFromApi() {
+    const { internalApiBaseUrl } = this.getUrls();
+    const token = await this.getInternalApiAuthToken();
+
+    const body = await this.makeRequest(`${internalApiBaseUrl}/api/servers`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    let parsed;
+    try {
+      parsed = JSON.parse(body);
+    } catch (_error) {
+      throw new Error(`Resposta inválida ao consultar servidores: ${body}`);
+    }
+
+    if (!Array.isArray(parsed)) {
+      throw new Error('A API de servidores retornou um formato inesperado');
+    }
+
+    return parsed;
+  }
+}
+
+module.exports = new BotIntegrationsService();

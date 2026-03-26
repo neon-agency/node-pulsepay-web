@@ -1,0 +1,23 @@
+const express = require('express');
+const authRoutes = require('./routes/auth.routes');
+const serversRoutes = require('./routes/servers.routes');
+const clientsRoutes = require('./routes/clients.routes');
+const authMiddleware = require('./middlewares/auth.middleware');
+const errorHandler = require('./middlewares/error-handler');
+
+const app = express();
+
+app.use(express.json());
+
+app.get('/health', (_req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
+
+app.use('/api/auth', authRoutes);
+
+app.use('/api/servers', authMiddleware, serversRoutes);
+app.use('/api/clients', authMiddleware, clientsRoutes);
+
+app.use(errorHandler);
+
+module.exports = app;

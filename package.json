@@ -2,9 +2,20 @@
   "name": "pulsepay-frontend",
   "version": "0.1.0",
   "private": true,
-  "description": "Frontend web responsivo para intermediação de pagamentos Pix",
+  "description": "Frontend e API Node para intermediação de pagamentos Pix",
   "scripts": {
     "dev": "node server.js",
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev:api": "node src/server.js",
+    "start:api": "node src/server.js",
+    "migrate:latest": "knex migrate:latest --knexfile knexfile.js",
+    "migrate:rollback": "knex migrate:rollback --knexfile knexfile.js",
+    "migrate:make": "knex migrate:make --knexfile knexfile.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "knex": "^3.1.0",
+    "pg": "^8.13.3"
   }
 }
