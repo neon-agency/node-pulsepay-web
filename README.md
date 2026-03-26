@@ -1,4 +1,5 @@
 
+<<<<<<< HEAD
 
 # PulsePay API - Guia de Integração
 
@@ -12,6 +13,18 @@ Este README documenta as rotas para integração com outra aplicação.
 - `GET /health`
 
 Exemplo:
+=======
+# Recarga Facil Frontend
+
+Projeto web responsivo para intermediação de pagamentos Pix.
+
+## Rodar localmente
+
+1. Suba a API Go
+2. Configure `FRONTEND_API_BASE_URL`
+3. Rode:
+
+>>>>>>> 25e9084b7e0b1967414914e28feabd053fbb2b35
 ```bash
 curl -X GET "https://pulsepay.webutilidades.online/health"
 ```
