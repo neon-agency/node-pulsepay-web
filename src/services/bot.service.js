@@ -11,6 +11,8 @@ const STAGES = {
 };
 
 const PRICE_PER_UNIT = 10.00;
+const SERVER_BUTTONS_PAGE_SIZE = 2;
+const SERVER_NEXT_PAGE_ID = 'server:more';
 
 class BotService {
   normalizeServerButtonTitle(name) {
@@ -33,15 +35,35 @@ class BotService {
     return serverChoices.find((choice) => choice.buttonId === input || choice.numericId === input) || null;
   }
 
-  formatServerListMessage(serverChoices) {
-    const lines = serverChoices.map((choice) => `${choice.numericId}. ${choice.serverName}`);
-    return [
-      'Excelente! 🚀 Primeiramente, selecione o *Servidor* que você deseja recarregar:',
-      '',
-      ...lines,
-      '',
-      'Responda com o número da opção desejada.'
-    ].join('\n');
+  getServerPageButtons(serverChoices, page = 0) {
+    const start = page * SERVER_BUTTONS_PAGE_SIZE;
+    const end = start + SERVER_BUTTONS_PAGE_SIZE;
+    const pageChoices = serverChoices.slice(start, end);
+    const hasMore = end < serverChoices.length;
+
+    const buttons = pageChoices.map((choice) => ({
+      id: choice.buttonId,
+      title: choice.title
+    }));
+
+    if (hasMore) {
+      buttons.push({ id: SERVER_NEXT_PAGE_ID, title: '➡️ Mais' });
+    }
+
+    return buttons;
+  }
+
+  async sendServerButtons(sendButtons, serverChoices, page, isFirstPrompt = false) {
+    const totalPages = Math.max(1, Math.ceil(serverChoices.length / SERVER_BUTTONS_PAGE_SIZE));
+    const safePage = Math.max(0, Math.min(page, totalPages - 1));
+    const buttons = this.getServerPageButtons(serverChoices, safePage);
+
+    const title = isFirstPrompt
+      ? `Excelente! 🚀 Primeiramente, selecione o *Servidor* que você deseja recarregar:\n\nPágina ${safePage + 1}/${totalPages}`
+      : `Selecione um servidor 👇\n\nPágina ${safePage + 1}/${totalPages}`;
+
+    await sendButtons(title, buttons);
+    return safePage;
   }
 
   async processIncomingMessage({ from, text }) {
@@ -87,15 +109,8 @@ class BotService {
           }
 
           session.serverChoices = serverChoices;
-
-          if (serverChoices.length <= 3) {
-            await sendButtons(
-              'Excelente! 🚀 Primeiramente, selecione o *Servidor* que você deseja recarregar:',
-              serverChoices.map((choice) => ({ id: choice.buttonId, title: choice.title }))
-            );
-          } else {
-            await sendText(this.formatServerListMessage(serverChoices));
-          }
+          session.serverPage = 0;
+          session.serverPage = await this.sendServerButtons(sendButtons, serverChoices, session.serverPage, true);
 
           session.stage = STAGES.ASK_LOGIN;
           break;
@@ -112,6 +127,13 @@ class BotService {
         break;
 
       case STAGES.ASK_LOGIN: {
+        if (text === SERVER_NEXT_PAGE_ID && Array.isArray(session.serverChoices) && session.serverChoices.length > 0) {
+          const totalPages = Math.max(1, Math.ceil(session.serverChoices.length / SERVER_BUTTONS_PAGE_SIZE));
+          const nextPage = ((session.serverPage || 0) + 1) % totalPages;
+          session.serverPage = await this.sendServerButtons(sendButtons, session.serverChoices, nextPage, false);
+          break;
+        }
+
         const selectedServer = this.resolveServerSelection(session.serverChoices, text);
 
         if (selectedServer) {
@@ -122,16 +144,9 @@ class BotService {
           break;
         }
 
-        if (Array.isArray(session.serverChoices) && session.serverChoices.length <= 3) {
-          await sendButtons(
-            'Ops! Selecione um servidor clicando em um dos botões abaixo: 👇',
-            session.serverChoices.map((choice) => ({ id: choice.buttonId, title: choice.title }))
-          );
-          break;
-        }
-
         if (Array.isArray(session.serverChoices) && session.serverChoices.length > 0) {
-          await sendText(`Ops! Opção inválida.\n\n${this.formatServerListMessage(session.serverChoices)}`);
+          await sendText('Ops! Escolha uma opção pelos botões abaixo.');
+          session.serverPage = await this.sendServerButtons(sendButtons, session.serverChoices, session.serverPage || 0, false);
           break;
         }
 
