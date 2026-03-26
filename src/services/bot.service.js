@@ -17,6 +17,7 @@ const STAGES = {
 };
 
 const SERVER_LIST_PAGE_SIZE = 4;
+const SERVER_BUTTON_PAGE_SIZE = 2;
 const SERVER_NEXT_PAGE_ID = 'server:more';
 const END_CONVERSATION_ID = 'end:conversation';
 const END_CONVERSATION_TITLE = '🛑 Encerrar';
@@ -107,6 +108,39 @@ class BotService {
     );
 
     return safePage;
+  }
+
+  async sendServerPicker(sendList, sendButtons, serverChoices, page = 0, isFirstPrompt = false) {
+    try {
+      return await this.sendServerList(sendList, serverChoices, page, isFirstPrompt);
+    } catch (error) {
+      // Fallback para provedores que não suportam lista interativa.
+      console.error('Falha ao enviar lista de servidores; usando fallback de botões:', error);
+
+      const totalPages = Math.max(1, Math.ceil(serverChoices.length / SERVER_BUTTON_PAGE_SIZE));
+      const safePage = Math.max(0, Math.min(page, totalPages - 1));
+      const start = safePage * SERVER_BUTTON_PAGE_SIZE;
+      const end = start + SERVER_BUTTON_PAGE_SIZE;
+      const currentChoices = serverChoices.slice(start, end);
+
+      const buttons = currentChoices.map((choice) => ({
+        id: choice.buttonId,
+        title: choice.title
+      }));
+
+      if (end < serverChoices.length) {
+        buttons.push({ id: SERVER_NEXT_PAGE_ID, title: '➡️ Próximos' });
+      } else if (buttons.length < 3) {
+        buttons.push({ id: END_CONVERSATION_ID, title: END_CONVERSATION_TITLE });
+      }
+
+      const title = isFirstPrompt
+        ? `Excelente! 🚀 Agora selecione o *Servidor* vinculado à sua credencial:\n\nPágina ${safePage + 1}/${totalPages}`
+        : `Selecione um servidor 👇\n\nPágina ${safePage + 1}/${totalPages}`;
+
+      await sendButtons(title, buttons, { includeEnd: false });
+      return safePage;
+    }
   }
 
   async processIncomingMessage({ from, text }) {
@@ -208,7 +242,7 @@ class BotService {
 
           session.credential = resolved.credential;
           session.serverChoices = serverChoices;
-          session.serverPage = await this.sendServerList(sendList, serverChoices, 0, true);
+          session.serverPage = await this.sendServerPicker(sendList, sendButtons, serverChoices, 0, true);
           session.stage = STAGES.ASK_SERVER;
           break;
         } catch (error) {
@@ -223,9 +257,8 @@ class BotService {
 
       case STAGES.ASK_SERVER: {
         if (text === SERVER_NEXT_PAGE_ID && Array.isArray(session.serverChoices) && session.serverChoices.length > 0) {
-          const totalPages = Math.max(1, Math.ceil(session.serverChoices.length / SERVER_LIST_PAGE_SIZE));
-          const nextPage = ((session.serverPage || 0) + 1) % totalPages;
-          session.serverPage = await this.sendServerList(sendList, session.serverChoices, nextPage, false);
+          const nextPage = (session.serverPage || 0) + 1;
+          session.serverPage = await this.sendServerPicker(sendList, sendButtons, session.serverChoices, nextPage, false);
           break;
         }
 
@@ -243,7 +276,7 @@ class BotService {
 
         if (Array.isArray(session.serverChoices) && session.serverChoices.length > 0) {
           await sendText('Ops! Escolha uma opção na lista de servidores.');
-          session.serverPage = await this.sendServerList(sendList, session.serverChoices, session.serverPage || 0, false);
+          session.serverPage = await this.sendServerPicker(sendList, sendButtons, session.serverChoices, session.serverPage || 0, false);
           break;
         }
 
