@@ -79,7 +79,7 @@ http
               console.log("[Webhook] Body não é JSON ou está malformatado");
             }
 
-            await bot.handleWebhook(body);
+            const result = await bot.handleWebhook(body);
             console.log("[Webhook] Processado com sucesso");
             send(res, 200, "OK");
           } catch (error) {

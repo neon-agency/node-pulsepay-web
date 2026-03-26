@@ -11,7 +11,7 @@ module.exports = async function handler(req, res) {
       console.log("[Vercel Webhook] Body Recebido:", body);
       
       // Chama a mesma lógica que o seu server.js local chama
-      await bot.handleWebhook(body);
+      const result = await bot.handleWebhook(body);
       
       console.log("[Vercel Webhook] Processado com sucesso");
       return res.status(200).send('OK');

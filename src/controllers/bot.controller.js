@@ -36,6 +36,8 @@ class BotController {
       from: message.from,
       text
     });
+
+    return { ok: true };
   }
 }
 
