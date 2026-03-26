@@ -4,6 +4,7 @@ const integrationsService = require('./bot-integrations.service');
 const STAGES = {
   START: 'START',
   ASK_PANEL: 'ASK_PANEL',
+  ASK_DOUBT: 'ASK_DOUBT',
   ASK_LOGIN: 'ASK_LOGIN',
   ASK_QUANTITY: 'ASK_QUANTITY',
   ASK_PAYMENT: 'ASK_PAYMENT',
@@ -11,6 +12,10 @@ const STAGES = {
 };
 
 const PRICE_PER_UNIT = 10.00;
+const SERVER_LIST_PAGE_SIZE = 4;
+const SERVER_NEXT_PAGE_ID = 'server:more';
+const END_CONVERSATION_ID = 'end:conversation';
+const END_CONVERSATION_TITLE = '🛑 Encerrar';
 
 class BotService {
   normalizeServerButtonTitle(name) {
@@ -32,28 +37,71 @@ class BotService {
     return serverChoices.find((choice) => choice.buttonId === input) || null;
   }
 
-  async sendServerList(sendList, serverChoices, isFirstPrompt = false) {
+  withEndConversationButton(buttons) {
+    const hasEnd = buttons.some((item) => item.id === END_CONVERSATION_ID);
+    if (hasEnd) return buttons;
+    return [...buttons, { id: END_CONVERSATION_ID, title: END_CONVERSATION_TITLE }];
+  }
+
+  async sendEndConversationOption(sendButtons) {
+    await sendButtons('Se desejar, você pode encerrar a conversa agora.', [
+      { id: END_CONVERSATION_ID, title: END_CONVERSATION_TITLE }
+    ], { includeEnd: false });
+  }
+
+  async sendServerList(sendList, serverChoices, page = 0, isFirstPrompt = false) {
+    const totalPages = Math.max(1, Math.ceil(serverChoices.length / SERVER_LIST_PAGE_SIZE));
+    const safePage = Math.max(0, Math.min(page, totalPages - 1));
+    const start = safePage * SERVER_LIST_PAGE_SIZE;
+    const end = start + SERVER_LIST_PAGE_SIZE;
+    const currentRows = serverChoices.slice(start, end).map((choice) => ({
+      id: choice.buttonId,
+      title: choice.title,
+      description: choice.serverName
+    }));
+
+    if (end < serverChoices.length) {
+      currentRows.push({
+        id: SERVER_NEXT_PAGE_ID,
+        title: '➡️ Próximos',
+        description: `Página ${safePage + 2} de ${totalPages}`
+      });
+    }
+
+    currentRows.push({
+      id: END_CONVERSATION_ID,
+      title: END_CONVERSATION_TITLE,
+      description: 'Finaliza o atendimento'
+    });
+
     const title = isFirstPrompt
-      ? 'Excelente! 🚀 Primeiramente, selecione o *Servidor* que você deseja recarregar:'
-      : 'Selecione um servidor 👇';
+      ? `Excelente! 🚀 Primeiramente, selecione o *Servidor* que você deseja recarregar:\n\nPágina ${safePage + 1}/${totalPages}`
+      : `Selecione um servidor 👇\n\nPágina ${safePage + 1}/${totalPages}`;
 
     await sendList(
       title,
       'Ver servidores',
-      serverChoices.map((choice) => ({
-        id: choice.buttonId,
-        title: choice.title,
-        description: choice.serverName
-      }))
+      currentRows
     );
+
+    return safePage;
   }
 
   async processIncomingMessage({ from, text }) {
     const session = sessionsRepository.getOrCreate(from);
 
     const sendText = async (message) => integrationsService.sendWhatsAppText(from, message);
-    const sendButtons = async (message, buttons) => integrationsService.sendWhatsAppButtons(from, message, buttons);
+    const sendButtons = async (message, buttons, options = { includeEnd: true }) => {
+      const prepared = options.includeEnd ? this.withEndConversationButton(buttons) : buttons;
+      await integrationsService.sendWhatsAppButtons(from, message, prepared);
+    };
     const sendList = async (message, buttonText, rows) => integrationsService.sendWhatsAppList(from, message, buttonText, rows);
+
+    if (text === END_CONVERSATION_ID || text?.toLowerCase() === 'encerrar') {
+      sessionsRepository.reset(from);
+      await sendText('Conversa encerrada. Quando quiser voltar, é só mandar uma mensagem. 👋');
+      return;
+    }
 
     if (text?.toLowerCase() === 'reset' || text?.toLowerCase() === 'voltar' || text?.toLowerCase() === 'cancelar') {
       session.stage = STAGES.START;
@@ -92,15 +140,16 @@ class BotService {
           }
 
           session.serverChoices = serverChoices;
-          await this.sendServerList(sendList, serverChoices, true);
+          session.serverPage = await this.sendServerList(sendList, serverChoices, 0, true);
 
           session.stage = STAGES.ASK_LOGIN;
           break;
         }
 
         if (text === '2') {
-          await sendText('Com certeza! Descreva sua dúvida abaixo e um de nossos especialistas entrará em contato em instantes. 🧑‍💻');
-          session.stage = STAGES.START;
+          await sendText('Com certeza! ✍️\n\nMe envie sua dúvida e eu vou encaminhar para nossa equipe agora mesmo.');
+          await this.sendEndConversationOption(sendButtons);
+          session.stage = STAGES.ASK_DOUBT;
           break;
         }
 
@@ -108,20 +157,39 @@ class BotService {
         await this.processIncomingMessage({ from, text: '' });
         break;
 
+      case STAGES.ASK_DOUBT:
+        if (!text || !text.trim()) {
+          await sendText('Pode me descrever sua dúvida em uma mensagem?');
+          await this.sendEndConversationOption(sendButtons);
+          break;
+        }
+
+        await sendText('Perfeito! ✅\n\nRecebemos sua dúvida e um de nossos atendentes entrará em contato com você em instantes.');
+        session.stage = STAGES.START;
+        break;
+
       case STAGES.ASK_LOGIN: {
+        if (text === SERVER_NEXT_PAGE_ID && Array.isArray(session.serverChoices) && session.serverChoices.length > 0) {
+          const totalPages = Math.max(1, Math.ceil(session.serverChoices.length / SERVER_LIST_PAGE_SIZE));
+          const nextPage = ((session.serverPage || 0) + 1) % totalPages;
+          session.serverPage = await this.sendServerList(sendList, session.serverChoices, nextPage, false);
+          break;
+        }
+
         const selectedServer = this.resolveServerSelection(session.serverChoices, text);
 
         if (selectedServer) {
           session.panel_id = selectedServer.serverId;
           session.panel_name = selectedServer.serverName;
           await sendText(`Perfeito! Painel *${session.panel_name}* selecionado.\n\n⚠️ Agora, por favor, me informe o seu *Login* ou *Nº da Conta*:`);
+          await this.sendEndConversationOption(sendButtons);
           session.stage = STAGES.ASK_QUANTITY;
           break;
         }
 
         if (Array.isArray(session.serverChoices) && session.serverChoices.length > 0) {
           await sendText('Ops! Escolha uma opção na lista de servidores.');
-          await this.sendServerList(sendList, session.serverChoices, false);
+          session.serverPage = await this.sendServerList(sendList, session.serverChoices, session.serverPage || 0, false);
           break;
         }
 
@@ -134,11 +202,13 @@ class BotService {
         if (text && text.length >= 2) {
           session.login = text;
           await sendText(`Conta *${session.login}* identificada! ✅\n\nQuantos créditos você deseja recarregar hoje? (Ex: 1, 3, 10...)`);
+          await this.sendEndConversationOption(sendButtons);
           session.stage = STAGES.ASK_PAYMENT;
           break;
         }
 
         await sendText('O login informado parece muito curto. Por favor, confira e digite novamente:');
+        await this.sendEndConversationOption(sendButtons);
         break;
 
       case STAGES.ASK_PAYMENT: {
@@ -146,6 +216,7 @@ class BotService {
 
         if (Number.isNaN(qty) || qty <= 0) {
           await sendText('⚠️ Por favor, digite um número inteiro para a quantidade de créditos.');
+          await this.sendEndConversationOption(sendButtons);
           break;
         }
 
