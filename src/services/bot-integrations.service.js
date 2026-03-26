@@ -15,10 +15,14 @@ class BotIntegrationsService {
   }
 
   getUrls() {
+    const defaultVercelUrl = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : null;
+
     return {
       whatsappServiceUrl: process.env.WHATSAPP_SERVICE_URL || 'http://localhost:8082',
       paymentServiceUrl: process.env.PAYMENT_SERVICE_URL || 'https://go-payment-825906875083.europe-west1.run.app',
-      internalApiBaseUrl: process.env.INTERNAL_API_BASE_URL || `http://localhost:${process.env.API_PORT || 3001}`
+      internalApiBaseUrl: process.env.INTERNAL_API_BASE_URL || defaultVercelUrl || `http://localhost:${process.env.API_PORT || 3001}`
     };
   }
 
@@ -27,6 +31,10 @@ class BotIntegrationsService {
       email: process.env.API_LOGIN_EMAIL || 'admin@pulsepay.com',
       password: process.env.API_LOGIN_PASSWORD || 'pulsepay123'
     };
+  }
+
+  getInternalApiKey() {
+    return process.env.INTERNAL_API_KEY || '';
   }
 
   async makeRequest(url, { method = 'POST', payload, headers = {} } = {}) {
@@ -143,6 +151,28 @@ class BotIntegrationsService {
 
   async fetchServersFromApi() {
     const { internalApiBaseUrl } = this.getUrls();
+    const internalApiKey = this.getInternalApiKey();
+
+    if (internalApiKey) {
+      const body = await this.makeRequest(`${internalApiBaseUrl}/api/servers`, {
+        method: 'GET',
+        headers: { 'x-internal-api-key': internalApiKey }
+      });
+
+      let parsed;
+      try {
+        parsed = JSON.parse(body);
+      } catch (_error) {
+        throw new Error(`Resposta inválida ao consultar servidores: ${body}`);
+      }
+
+      if (!Array.isArray(parsed)) {
+        throw new Error('A API de servidores retornou um formato inesperado');
+      }
+
+      return parsed;
+    }
+
     const token = await this.getInternalApiAuthToken();
 
     const body = await this.makeRequest(`${internalApiBaseUrl}/api/servers`, {

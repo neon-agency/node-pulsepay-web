@@ -2,6 +2,15 @@ const AppError = require('../errors/app-error');
 const authService = require('../services/auth.service');
 
 module.exports = function authMiddleware(req, _res, next) {
+  const expectedInternalApiKey = process.env.INTERNAL_API_KEY;
+  const providedInternalApiKey = req.headers['x-internal-api-key'];
+
+  // Permite autenticação interna estática (ideal para ambiente serverless, como Vercel).
+  if (expectedInternalApiKey && providedInternalApiKey === expectedInternalApiKey) {
+    req.user = { type: 'internal', source: 'bot' };
+    return next();
+  }
+
   const authHeader = req.headers.authorization || '';
   const [type, token] = authHeader.split(' ');
 
