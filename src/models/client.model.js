@@ -5,6 +5,7 @@ class ClientModel {
     id = createId(),
     nome,
     email,
+    telefone,
     servidor,
     plano,
     status,
@@ -14,6 +15,7 @@ class ClientModel {
     this.id = id;
     this.nome = nome;
     this.email = email;
+    this.telefone = telefone;
     this.servidor = servidor;
     this.plano = plano;
     this.status = status;

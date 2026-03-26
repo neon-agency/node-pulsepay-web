@@ -2,6 +2,7 @@ const AppError = require('../errors/app-error');
 const ClientModel = require('../models/client.model');
 const clientsRepository = require('../repositories/clients.repository');
 const serversRepository = require('../repositories/servers.repository');
+const { sanitizeTelefone, isValidTelefone } = require('../utils/phone');
 
 function toDateOnlyString(dateInput) {
   const input = new Date(dateInput);
@@ -34,6 +35,9 @@ function calculateStatusVencimento(vencimento) {
 async function normalizePayload(payload, current = null) {
   const nome = payload?.nome !== undefined ? String(payload.nome).trim() : current?.nome;
   const email = payload?.email !== undefined ? String(payload.email).trim().toLowerCase() : current?.email;
+  const telefoneRaw =
+    payload?.telefone !== undefined ? payload.telefone : current?.telefone;
+  const telefone = sanitizeTelefone(telefoneRaw);
   const servidor = payload?.servidor !== undefined ? String(payload.servidor).trim() : current?.servidor;
   const plano = payload?.plano !== undefined ? String(payload.plano).trim() : current?.plano;
   const status = payload?.status !== undefined ? String(payload.status).trim().toLowerCase() : current?.status;
@@ -41,6 +45,9 @@ async function normalizePayload(payload, current = null) {
 
   if (!nome) throw new AppError('Campo "nome" é obrigatório', 400);
   if (!email) throw new AppError('Campo "email" é obrigatório', 400);
+  if (!isValidTelefone(telefone)) {
+    throw new AppError('Campo "telefone" é obrigatório (mín. 10 dígitos)', 400);
+  }
   if (!servidor) throw new AppError('Campo "servidor" é obrigatório', 400);
   if (!plano) throw new AppError('Campo "plano" é obrigatório', 400);
   if (!status) throw new AppError('Campo "status" é obrigatório', 400);
@@ -59,7 +66,7 @@ async function normalizePayload(payload, current = null) {
   const vencimento = toDateOnlyString(vencimentoRaw);
   const statusVencimento = calculateStatusVencimento(vencimento);
 
-  return { nome, email, servidor, plano, status, vencimento, statusVencimento };
+  return { nome, email, telefone, servidor, plano, status, vencimento, statusVencimento };
 }
 
 class ClientsService {

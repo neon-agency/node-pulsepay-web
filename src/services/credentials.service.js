@@ -4,6 +4,8 @@ const CredentialServerModel = require('../models/credential-server.model');
 const credentialsRepository = require('../repositories/credentials.repository');
 const credentialServersRepository = require('../repositories/credential-servers.repository');
 const serversRepository = require('../repositories/servers.repository');
+const clientsRepository = require('../repositories/clients.repository');
+const { sanitizeTelefone, isValidTelefone } = require('../utils/phone');
 const {
   normalizeCredentialName,
   sanitizeLast4,
@@ -26,6 +28,11 @@ class CredentialsService {
     const last4 = sanitizeLast4(last4Raw);
     const nomeNormalized = normalizeCredentialName(nome);
     const credentialKey = buildCredentialKey(nomeNormalized, last4);
+    const clientIdRaw =
+      payload?.clientId !== undefined
+        ? String(payload.clientId).trim()
+        : current?.clientId;
+    const clientId = clientIdRaw || null;
 
     if (!nome) {
       throw new AppError('Campo "nome" é obrigatório', 400);
@@ -35,11 +42,16 @@ class CredentialsService {
       throw new AppError('Campo "last4" deve conter 4 dígitos', 400);
     }
 
+    if (!clientId) {
+      throw new AppError('Campo "clientId" é obrigatório (credencial vinculada ao cliente)', 400);
+    }
+
     return {
       nome,
       last4,
       nomeNormalized,
-      credentialKey
+      credentialKey,
+      clientId
     };
   }
 
@@ -68,9 +80,17 @@ class CredentialsService {
 
   async create(payload) {
     const data = this.normalizeCredentialPayload(payload);
-    const duplicated = await credentialsRepository.findByCredentialKey(data.credentialKey);
+    const client = await clientsRepository.findById(data.clientId);
+    if (!client) {
+      throw new AppError('Cliente não encontrado', 400);
+    }
+
+    const duplicated = await credentialsRepository.findByClientIdAndCredentialKey(
+      data.clientId,
+      data.credentialKey
+    );
     if (duplicated) {
-      throw new AppError('Já existe credencial com esse nome e últimos 4 dígitos', 409);
+      throw new AppError('Este cliente já possui credencial com esse nome e últimos 4 dígitos', 409);
     }
 
     return credentialsRepository.create(new CredentialModel(data));
@@ -79,9 +99,17 @@ class CredentialsService {
   async update(id, payload) {
     const current = await this.getById(id);
     const data = this.normalizeCredentialPayload(payload, current);
-    const duplicated = await credentialsRepository.findByCredentialKey(data.credentialKey);
+    const client = await clientsRepository.findById(data.clientId);
+    if (!client) {
+      throw new AppError('Cliente não encontrado', 400);
+    }
+
+    const duplicated = await credentialsRepository.findByClientIdAndCredentialKey(
+      data.clientId,
+      data.credentialKey
+    );
     if (duplicated && duplicated.id !== id) {
-      throw new AppError('Já existe credencial com esse nome e últimos 4 dígitos', 409);
+      throw new AppError('Este cliente já possui credencial com esse nome e últimos 4 dígitos', 409);
     }
 
     return credentialsRepository.update(id, data);
@@ -138,15 +166,27 @@ class CredentialsService {
   async resolveCredentialWithServers(payload) {
     const nome = String(payload?.nome || '').trim();
     const last4 = sanitizeLast4(payload?.last4);
+    const telefoneDigits = sanitizeTelefone(
+      payload?.telefone ?? payload?.telefoneWhatsapp ?? payload?.from
+    );
 
     if (!nome || last4.length !== 4) {
       throw new AppError('Informe nome e 4 últimos dígitos válidos', 400);
     }
 
+    if (!isValidTelefone(telefoneDigits)) {
+      throw new AppError('Telefone do cliente inválido ou ausente', 400);
+    }
+
+    const client = await clientsRepository.findByMsisdnMatch(telefoneDigits);
+    if (!client) {
+      throw new AppError('Nenhum cliente cadastrado com este telefone', 404);
+    }
+
     const key = buildCredentialKey(normalizeCredentialName(nome), last4);
-    const credential = await credentialsRepository.findByCredentialKey(key);
+    const credential = await credentialsRepository.findByClientIdAndCredentialKey(client.id, key);
     if (!credential) {
-      throw new AppError('Credencial não encontrada', 404);
+      throw new AppError('Credencial não encontrada para este cliente', 404);
     }
 
     const links = await credentialServersRepository.findByCredentialIdWithServers(credential.id);
@@ -165,7 +205,13 @@ class CredentialsService {
       credential: {
         id: credential.id,
         nome: credential.nome,
-        last4: credential.last4
+        last4: credential.last4,
+        clientId: client.id
+      },
+      client: {
+        id: client.id,
+        nome: client.nome,
+        telefone: client.telefone
       },
       servers: activeLinks
     };

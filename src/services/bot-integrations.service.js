@@ -163,11 +163,11 @@ class BotIntegrationsService {
     };
   }
 
-  async resolveCredentialFromApi({ nome, last4 }) {
+  async resolveCredentialFromApi({ nome, last4, telefone }) {
     const { internalApiBaseUrl } = this.getUrls();
     const body = await this.makeRequest(`${internalApiBaseUrl}/api/bot/resolve-credential`, {
       method: 'POST',
-      payload: { nome, last4 },
+      payload: { nome, last4, telefone },
       headers: this.getInternalApiHeaders()
     });
 

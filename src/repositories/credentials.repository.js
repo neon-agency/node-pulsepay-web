@@ -10,53 +10,86 @@ class CredentialsRepository {
       last4: row.last4,
       nomeNormalized: row.nome_normalized,
       credentialKey: row.credential_key,
+      clientId: row.client_id,
+      clientNome: row.client_nome ?? null,
+      clientTelefone: row.client_telefone ?? null,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
   }
 
   async findAll() {
-    const rows = await db('credentials').select('*').orderBy('created_at', 'desc');
+    const rows = await db('credentials as c')
+      .leftJoin('clients as cl', 'c.client_id', 'cl.id')
+      .select(
+        'c.id',
+        'c.nome',
+        'c.last4',
+        'c.nome_normalized',
+        'c.credential_key',
+        'c.client_id',
+        'c.created_at',
+        'c.updated_at',
+        'cl.nome as client_nome',
+        'cl.telefone as client_telefone'
+      )
+      .orderBy('c.created_at', 'desc');
     return rows.map((row) => this.mapRow(row));
   }
 
   async findById(id) {
-    const row = await db('credentials').where({ id }).first();
+    const row = await db('credentials as c')
+      .leftJoin('clients as cl', 'c.client_id', 'cl.id')
+      .select(
+        'c.id',
+        'c.nome',
+        'c.last4',
+        'c.nome_normalized',
+        'c.credential_key',
+        'c.client_id',
+        'c.created_at',
+        'c.updated_at',
+        'cl.nome as client_nome',
+        'cl.telefone as client_telefone'
+      )
+      .where('c.id', id)
+      .first();
     return this.mapRow(row);
   }
 
-  async findByCredentialKey(credentialKey) {
-    const row = await db('credentials').where({ credential_key: credentialKey }).first();
+  async findByClientIdAndCredentialKey(clientId, credentialKey) {
+    const row = await db('credentials')
+      .where({ client_id: clientId, credential_key: credentialKey })
+      .first();
     return this.mapRow(row);
   }
 
   async create(credential) {
     const payload = {
-      ...credential,
+      id: credential.id,
+      nome: credential.nome,
+      last4: credential.last4,
       nome_normalized: credential.nomeNormalized,
-      credential_key: credential.credentialKey
+      credential_key: credential.credentialKey,
+      client_id: credential.clientId
     };
 
-    delete payload.nomeNormalized;
-    delete payload.credentialKey;
-
-    const [row] = await db('credentials').insert(payload).returning('*');
-    return this.mapRow(row);
+    const [inserted] = await db('credentials').insert(payload).returning('*');
+    return this.findById(inserted.id);
   }
 
   async update(id, updates) {
     const payload = {
-      ...updates,
+      nome: updates.nome,
+      last4: updates.last4,
       nome_normalized: updates.nomeNormalized,
       credential_key: updates.credentialKey,
+      client_id: updates.clientId,
       updated_at: db.fn.now()
     };
 
-    delete payload.nomeNormalized;
-    delete payload.credentialKey;
-
-    const [row] = await db('credentials').where({ id }).update(payload).returning('*');
-    return this.mapRow(row);
+    await db('credentials').where({ id }).update(payload);
+    return this.findById(id);
   }
 
   async remove(id) {

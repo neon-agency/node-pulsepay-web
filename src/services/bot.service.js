@@ -194,7 +194,8 @@ class BotService {
         try {
           const resolved = await integrationsService.resolveCredentialFromApi({
             nome: session.credentialName,
-            last4
+            last4,
+            telefone: from
           });
 
           const serverChoices = this.buildServerChoices(resolved.servers || []);
@@ -211,7 +212,9 @@ class BotService {
           break;
         } catch (error) {
           console.error('Erro ao resolver credencial no bot:', error);
-          await sendText('❌ Não consegui validar essa credencial. Confira nome + últimos 4 dígitos e tente novamente.');
+          await sendText(
+            '❌ Não consegui validar essa credencial. Confira nome + últimos 4 dígitos e se o *WhatsApp* é o mesmo telefone cadastrado no painel do cliente.'
+          );
           session.stage = STAGES.ASK_CREDENTIAL_NAME;
           break;
         }

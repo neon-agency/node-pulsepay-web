@@ -1,4 +1,5 @@
 const db = require('../database/knex');
+const { normalizeBrMsisdn } = require('../utils/phone');
 
 class ClientsRepository {
   mapRow(row) {
@@ -8,6 +9,7 @@ class ClientsRepository {
       id: row.id,
       nome: row.nome,
       email: row.email,
+      telefone: row.telefone,
       servidor: row.servidor_id,
       plano: row.plano,
       status: row.status,
@@ -31,6 +33,20 @@ class ClientsRepository {
   async findByEmail(email) {
     const row = await db('clients').whereRaw('LOWER(email) = ?', [String(email).toLowerCase()]).first();
     return this.mapRow(row);
+  }
+
+  async findByMsisdnMatch(incomingDigits) {
+    const target = normalizeBrMsisdn(incomingDigits);
+    if (target.length < 10) return null;
+
+    const rows = await db('clients').select('*');
+    for (const row of rows) {
+      const stored = normalizeBrMsisdn(row.telefone || '');
+      if (stored && stored === target) {
+        return this.mapRow(row);
+      }
+    }
+    return null;
   }
 
   async create(client) {

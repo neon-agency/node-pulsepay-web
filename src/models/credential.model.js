@@ -6,13 +6,15 @@ class CredentialModel {
     nome,
     last4,
     nomeNormalized,
-    credentialKey
+    credentialKey,
+    clientId
   }) {
     this.id = id;
     this.nome = nome;
     this.last4 = last4;
     this.nomeNormalized = nomeNormalized;
     this.credentialKey = credentialKey;
+    this.clientId = clientId;
   }
 }
 
