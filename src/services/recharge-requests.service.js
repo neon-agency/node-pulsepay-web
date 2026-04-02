@@ -4,6 +4,7 @@ const credentialServersRepository = require('../repositories/credential-servers.
 const credentialsRepository = require('../repositories/credentials.repository');
 const serversRepository = require('../repositories/servers.repository');
 const rechargeRequestsRepository = require('../repositories/recharge-requests.repository');
+const salesNotificationsService = require('./sales-notifications.service');
 
 class RechargeRequestsService {
   parseQuantity(value) {
@@ -46,7 +47,7 @@ class RechargeRequestsService {
     return this.parseMoney(effectivePrice);
   }
 
-  async create(payload) {
+  async create(payload, currentUser = null) {
     const credentialId = String(payload?.credentialId || '').trim();
     const serverId = String(payload?.serverId || '').trim();
     const accountLogin = String(payload?.accountLogin || '').trim();
@@ -76,6 +77,7 @@ class RechargeRequestsService {
     const created = await rechargeRequestsRepository.create(new RechargeRequestModel({
       credentialId,
       serverId,
+      createdByUserId: currentUser?.id || null,
       accountLogin,
       quantity,
       unitPrice,
@@ -89,7 +91,7 @@ class RechargeRequestsService {
   }
 
   async updatePayment(id, payload) {
-    await this.getById(id);
+    const previous = await this.getById(id);
 
     const nextStatus = String(payload?.paymentStatus || '').trim();
     const allowed = ['pendente_pagamento', 'pix_gerado', 'pago', 'cancelado'];
@@ -112,7 +114,13 @@ class RechargeRequestsService {
       pixTxid: payload?.pixTxid ? String(payload.pixTxid) : null
     });
 
-    return this.getById(id);
+    const updated = await this.getById(id);
+
+    if (previous.paymentStatus !== 'pago' && updated.paymentStatus === 'pago') {
+      await salesNotificationsService.processPaidRecharge(updated);
+    }
+
+    return updated;
   }
 }
 

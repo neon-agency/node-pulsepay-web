@@ -12,7 +12,7 @@ class RechargeRequestsController {
   }
 
   async create(req, res) {
-    const data = await rechargeRequestsService.create(req.body || {});
+    const data = await rechargeRequestsService.create(req.body || {}, req.user || null);
     return res.status(201).json(data);
   }
 

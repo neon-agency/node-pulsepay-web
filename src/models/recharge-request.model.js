@@ -5,6 +5,7 @@ class RechargeRequestModel {
     id = createId(),
     credentialId,
     serverId,
+    createdByUserId = null,
     accountLogin,
     quantity,
     unitPrice,
@@ -18,6 +19,7 @@ class RechargeRequestModel {
     this.id = id;
     this.credentialId = credentialId;
     this.serverId = serverId;
+    this.createdByUserId = createdByUserId;
     this.accountLogin = accountLogin;
     this.quantity = quantity;
     this.unitPrice = unitPrice;

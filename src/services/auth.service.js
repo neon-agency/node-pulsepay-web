@@ -1,5 +1,9 @@
 const AppError = require('../errors/app-error');
 const crypto = require('crypto');
+const { createId } = require('../utils/id');
+const { hashPassword, verifyPassword } = require('../utils/password');
+const { sanitizeTelefone, isValidTelefone } = require('../utils/phone');
+const usersRepository = require('../repositories/users.repository');
 
 const TOKEN_TTL_MS = 8 * 60 * 60 * 1000;
 
@@ -19,6 +23,30 @@ function fromBase64Url(value) {
 }
 
 class AuthService {
+  async ensureDefaultAdminUser() {
+    const email = String(process.env.API_LOGIN_EMAIL || 'admin@pulsepay.com').trim().toLowerCase();
+    const password = String(process.env.API_LOGIN_PASSWORD || 'pulsepay123');
+    const name = String(process.env.API_LOGIN_NAME || 'Admin PulsePay').trim();
+    const role = String(process.env.API_LOGIN_ROLE || 'admin').trim();
+    const rawWhatsapp = String(process.env.API_LOGIN_WHATSAPP_PHONE || '').trim();
+    const whatsappPhone = rawWhatsapp ? sanitizeTelefone(rawWhatsapp) : null;
+
+    const existing = await usersRepository.findByEmail(email);
+    if (existing) {
+      return existing;
+    }
+
+    return usersRepository.create({
+      id: createId(),
+      name,
+      email,
+      passwordHash: hashPassword(password),
+      role,
+      whatsappPhone: whatsappPhone && isValidTelefone(whatsappPhone) ? whatsappPhone : null,
+      isActive: true
+    });
+  }
+
   getTokenSecret() {
     return process.env.API_TOKEN_SECRET || process.env.INTERNAL_API_KEY || 'pulsepay-dev-token-secret';
   }
@@ -58,7 +86,11 @@ class AuthService {
 
     try {
       const payload = JSON.parse(fromBase64Url(encodedPayload));
-      if (typeof payload?.email !== 'string' || typeof payload?.exp !== 'number') {
+      if (
+        typeof payload?.email !== 'string' ||
+        typeof payload?.userId !== 'string' ||
+        typeof payload?.exp !== 'number'
+      ) {
         return null;
       }
 
@@ -68,23 +100,40 @@ class AuthService {
     }
   }
 
-  login(email, password) {
-    const validEmail = process.env.API_LOGIN_EMAIL || 'admin@pulsepay.com';
-    const validPassword = process.env.API_LOGIN_PASSWORD || 'pulsepay123';
-
+  async login(email, password) {
     if (!email || !password) {
       throw new AppError('Email e senha são obrigatórios', 400);
     }
 
-    if (email !== validEmail || password !== validPassword) {
+    await this.ensureDefaultAdminUser();
+
+    const user = await usersRepository.findByEmail(String(email).trim().toLowerCase());
+    if (!user || !user.isActive || !verifyPassword(password, user.passwordHash)) {
       throw new AppError('Credenciais inválidas', 401);
     }
 
     const exp = Date.now() + TOKEN_TTL_MS;
-    const token = this.createToken({ email, exp });
+    const token = this.createToken({
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      whatsappPhone: user.whatsappPhone,
+      exp
+    });
     const expiresAt = new Date(exp).toISOString();
 
-    return { token, expiresAt, user: { email } };
+    return {
+      token,
+      expiresAt,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        whatsappPhone: user.whatsappPhone
+      }
+    };
   }
 
   validateToken(token) {
@@ -98,8 +147,12 @@ class AuthService {
     }
 
     return {
+      id: payload.userId,
       email: payload.email,
-      expiresAt: new Date(payload.exp).toISOString(),
+      name: payload.name || '',
+      role: payload.role || 'admin',
+      whatsappPhone: payload.whatsappPhone || null,
+      expiresAt: new Date(payload.exp).toISOString()
     };
   }
 }

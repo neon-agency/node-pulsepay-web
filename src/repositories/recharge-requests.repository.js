@@ -8,6 +8,7 @@ class RechargeRequestsRepository {
       id: row.id,
       credentialId: row.credential_id,
       serverId: row.server_id,
+      createdByUserId: row.created_by_user_id,
       accountLogin: row.account_login,
       quantity: Number(row.quantity),
       unitPrice: Number(row.unit_price),
@@ -29,7 +30,9 @@ class RechargeRequestsRepository {
       ...this.mapRow(row),
       credentialNome: row.credential_nome,
       credentialLast4: row.credential_last4,
-      servidor: row.servidor
+      servidor: row.servidor,
+      createdByUserName: row.created_by_user_name,
+      createdByUserEmail: row.created_by_user_email
     };
   }
 
@@ -37,11 +40,14 @@ class RechargeRequestsRepository {
     const rows = await db('recharge_requests as rr')
       .innerJoin('credentials as c', 'c.id', 'rr.credential_id')
       .innerJoin('servers as s', 's.id', 'rr.server_id')
+      .leftJoin('users as u', 'u.id', 'rr.created_by_user_id')
       .select(
         'rr.*',
         'c.nome as credential_nome',
         'c.last4 as credential_last4',
-        's.servidor'
+        's.servidor',
+        'u.name as created_by_user_name',
+        'u.email as created_by_user_email'
       )
       .orderBy('rr.created_at', 'desc');
 
@@ -52,11 +58,14 @@ class RechargeRequestsRepository {
     const row = await db('recharge_requests as rr')
       .innerJoin('credentials as c', 'c.id', 'rr.credential_id')
       .innerJoin('servers as s', 's.id', 'rr.server_id')
+      .leftJoin('users as u', 'u.id', 'rr.created_by_user_id')
       .select(
         'rr.*',
         'c.nome as credential_nome',
         'c.last4 as credential_last4',
-        's.servidor'
+        's.servidor',
+        'u.name as created_by_user_name',
+        'u.email as created_by_user_email'
       )
       .where({ 'rr.id': id })
       .first();
@@ -69,6 +78,7 @@ class RechargeRequestsRepository {
       ...item,
       credential_id: item.credentialId,
       server_id: item.serverId,
+      created_by_user_id: item.createdByUserId,
       account_login: item.accountLogin,
       unit_price: item.unitPrice,
       total_amount: item.totalAmount,
@@ -82,6 +92,7 @@ class RechargeRequestsRepository {
     delete payload.credentialId;
     delete payload.serverId;
     delete payload.accountLogin;
+    delete payload.createdByUserId;
     delete payload.unitPrice;
     delete payload.totalAmount;
     delete payload.paymentMethod;
@@ -115,6 +126,25 @@ class RechargeRequestsRepository {
       .returning('*');
 
     return this.mapRow(row);
+  }
+
+  async findPaid() {
+    const rows = await db('recharge_requests as rr')
+      .innerJoin('credentials as c', 'c.id', 'rr.credential_id')
+      .innerJoin('servers as s', 's.id', 'rr.server_id')
+      .leftJoin('users as u', 'u.id', 'rr.created_by_user_id')
+      .select(
+        'rr.*',
+        'c.nome as credential_nome',
+        'c.last4 as credential_last4',
+        's.servidor',
+        'u.name as created_by_user_name',
+        'u.email as created_by_user_email'
+      )
+      .where({ 'rr.payment_status': 'pago' })
+      .orderBy('rr.updated_at', 'desc');
+
+    return rows.map((row) => this.mapRowWithRelations(row));
   }
 }
 
