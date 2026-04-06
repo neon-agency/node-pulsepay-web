@@ -4,6 +4,7 @@ const credentialServersRepository = require('../repositories/credential-servers.
 const credentialsRepository = require('../repositories/credentials.repository');
 const serversRepository = require('../repositories/servers.repository');
 const rechargeRequestsRepository = require('../repositories/recharge-requests.repository');
+const paymentProofsRepository = require('../repositories/recharge-request-payment-proofs.repository');
 const salesNotificationsService = require('./sales-notifications.service');
 
 class RechargeRequestsService {
@@ -24,13 +25,29 @@ class RechargeRequestsService {
   }
 
   async list() {
-    return rechargeRequestsRepository.findAll();
+    const rows = await rechargeRequestsRepository.findAll();
+    return this.enrichWithPaymentProof(rows);
   }
 
   async getById(id) {
     const row = await rechargeRequestsRepository.findById(id);
     if (!row) throw new AppError('Solicitação de recarga não encontrada', 404);
-    return row;
+    const [enriched] = await this.enrichWithPaymentProof([row]);
+    return enriched;
+  }
+
+  async enrichWithPaymentProof(rows) {
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return [];
+    }
+
+    const proofs = await paymentProofsRepository.findLatestByRechargeRequestIds(rows.map((row) => row.id));
+    const proofMap = new Map(proofs.map((proof) => [proof.rechargeRequestId, proof]));
+
+    return rows.map((row) => ({
+      ...row,
+      latestPaymentProof: proofMap.get(row.id) || null
+    }));
   }
 
   async resolvePrice({ credentialId, serverId, unitPrice }) {

@@ -23,7 +23,17 @@ function fromBase64Url(value) {
 }
 
 class AuthService {
-  async ensureDefaultAdminUser() {
+  isMissingUsersTable(error) {
+    return (
+      error &&
+      typeof error === 'object' &&
+      error.code === '42P01' &&
+      typeof error.message === 'string' &&
+      error.message.includes('"users"')
+    );
+  }
+
+  getEnvAdminUser() {
     const email = String(process.env.API_LOGIN_EMAIL || 'admin@pulsepay.com').trim().toLowerCase();
     const password = String(process.env.API_LOGIN_PASSWORD || 'pulsepay123');
     const name = String(process.env.API_LOGIN_NAME || 'Admin PulsePay').trim();
@@ -31,20 +41,42 @@ class AuthService {
     const rawWhatsapp = String(process.env.API_LOGIN_WHATSAPP_PHONE || '').trim();
     const whatsappPhone = rawWhatsapp ? sanitizeTelefone(rawWhatsapp) : null;
 
-    const existing = await usersRepository.findByEmail(email);
-    if (existing) {
-      return existing;
-    }
-
-    return usersRepository.create({
-      id: createId(),
+    return {
+      id: 'env-admin',
       name,
       email,
-      passwordHash: hashPassword(password),
       role,
+      password,
       whatsappPhone: whatsappPhone && isValidTelefone(whatsappPhone) ? whatsappPhone : null,
       isActive: true
-    });
+    };
+  }
+
+  async ensureDefaultAdminUser() {
+    const envUser = this.getEnvAdminUser();
+
+    try {
+      const existing = await usersRepository.findByEmail(envUser.email);
+      if (existing) {
+        return existing;
+      }
+
+      return usersRepository.create({
+        id: createId(),
+        name: envUser.name,
+        email: envUser.email,
+        passwordHash: hashPassword(envUser.password),
+        role: envUser.role,
+        whatsappPhone: envUser.whatsappPhone,
+        isActive: true
+      });
+    } catch (error) {
+      if (this.isMissingUsersTable(error)) {
+        return envUser;
+      }
+
+      throw error;
+    }
   }
 
   getTokenSecret() {
@@ -105,10 +137,27 @@ class AuthService {
       throw new AppError('Email e senha são obrigatórios', 400);
     }
 
-    await this.ensureDefaultAdminUser();
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const defaultUser = await this.ensureDefaultAdminUser();
 
-    const user = await usersRepository.findByEmail(String(email).trim().toLowerCase());
-    if (!user || !user.isActive || !verifyPassword(password, user.passwordHash)) {
+    let user = null;
+    try {
+      user = await usersRepository.findByEmail(normalizedEmail);
+    } catch (error) {
+      if (!this.isMissingUsersTable(error)) {
+        throw error;
+      }
+    }
+
+    if (!user && defaultUser.email === normalizedEmail && defaultUser.password === password) {
+      user = defaultUser;
+    }
+
+    const passwordIsValid = user
+      ? ('passwordHash' in user ? verifyPassword(password, user.passwordHash) : user.password === password)
+      : false;
+
+    if (!user || !user.isActive || !passwordIsValid) {
       throw new AppError('Credenciais inválidas', 401);
     }
 

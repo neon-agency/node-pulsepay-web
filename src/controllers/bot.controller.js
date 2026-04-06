@@ -1,21 +1,64 @@
 const botService = require('../services/bot.service');
 
 class BotController {
-  parseIncomingText(message) {
+  parseIncomingMessage(message) {
     if (!message) return null;
 
     if (message.type === 'interactive') {
       const interactive = message.interactive || {};
-      if (interactive.type === 'button_reply') return interactive.button_reply?.id?.trim();
-      if (interactive.type === 'list_reply') return interactive.list_reply?.id?.trim();
-      return null;
+      if (interactive.type === 'button_reply') {
+        return {
+          type: 'interactive',
+          text: interactive.button_reply?.id?.trim() || ''
+        };
+      }
+      if (interactive.type === 'list_reply') {
+        return {
+          type: 'interactive',
+          text: interactive.list_reply?.id?.trim() || ''
+        };
+      }
+      return { type: 'interactive', text: '' };
     }
 
     if (message.type === 'text') {
-      return message.text?.body?.trim();
+      return {
+        type: 'text',
+        text: message.text?.body?.trim() || ''
+      };
     }
 
-    return null;
+    if (message.type === 'image') {
+      return {
+        type: 'image',
+        text: message.image?.caption?.trim() || '',
+        media: {
+          id: message.image?.id || null,
+          mimeType: message.image?.mime_type || null,
+          sha256: message.image?.sha256 || null,
+          caption: message.image?.caption || null
+        }
+      };
+    }
+
+    if (message.type === 'document') {
+      return {
+        type: 'document',
+        text: message.document?.caption?.trim() || '',
+        media: {
+          id: message.document?.id || null,
+          mimeType: message.document?.mime_type || null,
+          sha256: message.document?.sha256 || null,
+          fileName: message.document?.filename || null,
+          caption: message.document?.caption || null
+        }
+      };
+    }
+
+    return {
+      type: message.type || 'unknown',
+      text: ''
+    };
   }
 
   async handleWebhook(rawBody) {
@@ -31,10 +74,13 @@ class BotController {
     const message = payload.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
     if (!message?.from) return;
 
-    const text = this.parseIncomingText(message) || '';
+    const parsed = this.parseIncomingMessage(message) || { type: 'unknown', text: '' };
     await botService.processIncomingMessage({
       from: message.from,
-      text
+      text: parsed.text,
+      messageType: parsed.type,
+      media: parsed.media || null,
+      messageId: message.id || null
     });
 
     return { ok: true };
