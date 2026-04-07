@@ -136,24 +136,24 @@ class BotService {
   }
 
   async sendServerPicker(sendList, sendButtons, sendText, serverChoices, isFirstPrompt = false) {
-    try {
-      return await this.sendServerList(sendList, serverChoices, isFirstPrompt);
-    } catch (error) {
-      // Fallback para provedores que não suportam lista interativa.
-      console.error('Falha ao enviar lista de servidores; usando fallback de botões:', error);
+    const title = isFirstPrompt
+      ? 'Excelente! 🚀 Agora selecione o *Servidor* vinculado à sua credencial:'
+      : 'Selecione um servidor 👇';
 
+    if (serverChoices.length <= 3) {
       const buttons = serverChoices.map((choice) => ({
         id: choice.buttonId,
         title: choice.title
       }));
 
-      if (buttons.length <= 2) {
-        buttons.push({ id: END_CONVERSATION_ID, title: END_CONVERSATION_TITLE });
-        const title = this.buildServerPrompt(serverChoices, isFirstPrompt);
-        await sendButtons(title, buttons, { includeEnd: false });
-        return 0;
-      }
+      await sendButtons(title, buttons);
+      return 0;
+    }
 
+    try {
+      return await this.sendServerList(sendList, serverChoices, isFirstPrompt);
+    } catch (error) {
+      console.error('Falha ao enviar lista de servidores; usando fallback em texto:', error);
       await sendText(this.buildServerPrompt(serverChoices, isFirstPrompt));
       await sendButtons('Quando decidir, escolha *Encerrar* ou responda com o número/nome do servidor.', []);
       return 0;
