@@ -1,0 +1,141 @@
+const http = require('http');
+const https = require('https');
+const usersRepository = require('../repositories/users.repository');
+const notificationsRepository = require('../repositories/recharge-request-notifications.repository');
+const { createId } = require('../utils/id');
+
+class PaymentProofNotificationsService {
+  getEventType(proofId) {
+    return `payment_proof_pending_review:${proofId}`;
+  }
+
+  getZapServiceUrl() {
+    return process.env.GO_ZAP_SERVICE_URL || 'http://localhost:8080';
+  }
+
+  getAdminUrl() {
+    return process.env.PULSEPAY_ADMIN_URL || process.env.INTERNAL_API_BASE_URL || 'https://pulsepay.webutilidades.online';
+  }
+
+  async makeRequest(url, { method = 'GET', payload } = {}) {
+    const protocol = url.startsWith('https') ? https : http;
+    const body = payload ? JSON.stringify(payload) : null;
+
+    return new Promise((resolve, reject) => {
+      const req = protocol.request(url, {
+        method,
+        headers: body
+          ? {
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(body)
+            }
+          : undefined
+      }, (res) => {
+        let responseBody = '';
+        res.on('data', (chunk) => {
+          responseBody += chunk;
+        });
+        res.on('end', () => {
+          if (res.statusCode >= 400) {
+            return reject(new Error(`Status ${res.statusCode}: ${responseBody}`));
+          }
+
+          resolve(responseBody);
+        });
+      });
+
+      req.on('error', reject);
+      if (body) req.write(body);
+      req.end();
+    });
+  }
+
+  async isZapConnected() {
+    try {
+      const raw = await this.makeRequest(`${this.getZapServiceUrl()}/api/status`);
+      const payload = JSON.parse(raw);
+      return payload?.connected === true;
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  buildMessage({ recharge, proof }) {
+    const confidence = proof.analysisConfidence === null
+      ? 'n/d'
+      : `${Math.round(proof.analysisConfidence * 100)}%`;
+
+    return [
+      'Comprovante PIX recebido',
+      '',
+      `Recarga: ${recharge.id}`,
+      `Cliente: ${recharge.credentialNome || '-'} (${recharge.credentialLast4 || '****'})`,
+      `Servidor: ${recharge.servidor || '-'}`,
+      `Quantidade: ${recharge.quantity}`,
+      `Valor esperado: ${Number(recharge.totalAmount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`,
+      `Telefone origem: ${proof.senderPhone}`,
+      `IA: ${proof.analysisSummary || 'Sem resumo'}`,
+      `Confianca IA: ${confidence}`,
+      '',
+      `Validar no painel: ${this.getAdminUrl()}`,
+      `Busque pela recarga ${recharge.id} na aba de recargas.`
+    ].join('\n');
+  }
+
+  async ensureNotificationRow(rechargeRequestId, recipientUserId, proofId) {
+    const existing = await notificationsRepository.findByRechargeRequestAndRecipient(
+      rechargeRequestId,
+      recipientUserId,
+      this.getEventType(proofId)
+    );
+    if (existing) {
+      return existing;
+    }
+
+    return notificationsRepository.create({
+      id: createId('ntf'),
+      rechargeRequestId,
+      recipientUserId,
+      eventType: this.getEventType(proofId),
+      deliveryStatus: 'pending'
+    });
+  }
+
+  async notifyPendingReview({ recharge, proof }) {
+    const recipients = await usersRepository.findAllActiveWithWhatsapp();
+    if (recipients.length === 0) {
+      return;
+    }
+
+    const connected = await this.isZapConnected();
+    for (const recipient of recipients) {
+      const notification = await this.ensureNotificationRow(recharge.id, recipient.id, proof.id);
+      if (notification.deliveryStatus === 'sent') {
+        continue;
+      }
+
+      if (!connected) {
+        await notificationsRepository.markFailed(notification.id, 'GO-zap-service offline ou desconectado');
+        continue;
+      }
+
+      try {
+        await this.makeRequest(`${this.getZapServiceUrl()}/api/send`, {
+          method: 'POST',
+          payload: {
+            number: recipient.whatsappPhone,
+            message: this.buildMessage({ recharge, proof })
+          }
+        });
+        await notificationsRepository.markSent(notification.id);
+      } catch (error) {
+        await notificationsRepository.markFailed(
+          notification.id,
+          error instanceof Error ? error.message : 'Falha ao notificar revisor'
+        );
+      }
+    }
+  }
+}
+
+module.exports = new PaymentProofNotificationsService();

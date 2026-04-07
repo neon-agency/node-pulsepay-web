@@ -2,6 +2,7 @@ const sessionsRepository = require('../repositories/bot-sessions.repository');
 const integrationsService = require('./bot-integrations.service');
 const credentialsService = require('./credentials.service');
 const rechargeRequestsService = require('./recharge-requests.service');
+const paymentProofsService = require('./payment-proofs.service');
 
 const STAGES = {
   START: 'START',
@@ -10,10 +11,8 @@ const STAGES = {
   ASK_CREDENTIAL_NAME: 'ASK_CREDENTIAL_NAME',
   ASK_CREDENTIAL_LAST4: 'ASK_CREDENTIAL_LAST4',
   ASK_SERVER: 'ASK_SERVER',
-  ASK_ACCOUNT: 'ASK_ACCOUNT',
   ASK_QUANTITY: 'ASK_QUANTITY',
-  ASK_PAYMENT: 'ASK_PAYMENT',
-  COMPLETING: 'COMPLETING'
+  AWAIT_PAYMENT_PROOF: 'AWAIT_PAYMENT_PROOF'
 };
 
 const SERVER_LIST_PAGE_SIZE = 4;
@@ -143,7 +142,7 @@ class BotService {
     }
   }
 
-  async processIncomingMessage({ from, text }) {
+  async processIncomingMessage({ from, text, messageType = 'text', media = null, messageId = null }) {
     const session = sessionsRepository.getOrCreate(from);
 
     const sendText = async (message) => integrationsService.sendWhatsAppText(from, message);
@@ -268,9 +267,10 @@ class BotService {
           session.panel_id = selectedServer.serverId;
           session.panel_name = selectedServer.serverName;
           session.unitPrice = Number(selectedServer.unitPrice);
-          await sendText(`Perfeito! Servidor *${session.panel_name}* selecionado.\n\nAgora me informe o *Login / Nº da Conta* para recarga:`);
+          session.login = session.credential?.nome || session.credentialName;
+          await sendText(`Perfeito! Servidor *${session.panel_name}* selecionado.\n\nAgora me informe quantos créditos você deseja recarregar.`);
           await this.sendEndConversationOption(sendButtons);
-          session.stage = STAGES.ASK_ACCOUNT;
+          session.stage = STAGES.ASK_QUANTITY;
           break;
         }
 
@@ -284,19 +284,6 @@ class BotService {
         session.stage = STAGES.START;
         break;
       }
-
-      case STAGES.ASK_ACCOUNT:
-        if (text && text.length >= 2) {
-          session.login = text;
-          await sendText(`Conta *${session.login}* identificada! ✅\n\nQuantos créditos você deseja recarregar hoje? (Ex: 1, 3, 10...)`);
-          await this.sendEndConversationOption(sendButtons);
-          session.stage = STAGES.ASK_QUANTITY;
-          break;
-        }
-
-        await sendText('O login informado parece muito curto. Por favor, confira e digite novamente:');
-        await this.sendEndConversationOption(sendButtons);
-        break;
 
       case STAGES.ASK_QUANTITY:
         if (text && text.length >= 1) {
@@ -315,28 +302,13 @@ class BotService {
             '━━━━━━━━━━━━━━',
             `👤 *Usuário:* ${session.credential?.nome || session.credentialName} (${session.credential?.last4 || '****'})`,
             `🔹 *Servidor:* ${session.panel_name}`,
-            `🔹 *Conta:* ${session.login}`,
             `🔹 *Quantidade:* ${qty} unidade(s)`,
             `💳 *Valor unitário:* ${this.formatMoney(session.unitPrice)}`,
             `💰 *Total:* ${this.formatMoney(session.total)}`,
-            '━━━━━━━━━━━━━━',
-            'Selecione a forma de pagamento abaixo:'
+            '━━━━━━━━━━━━━━'
           ].join('\n');
 
-          await sendButtons(summary, [
-            { id: '1', title: 'PIX ⚡ (Instantâneo)' },
-            { id: '2', title: 'CRIPTO ₿' }
-          ]);
-          session.stage = STAGES.ASK_PAYMENT;
-          break;
-        }
-
-        await sendText('Informe uma quantidade válida para continuar.');
-        await this.sendEndConversationOption(sendButtons);
-        break;
-
-      case STAGES.ASK_PAYMENT:
-        if (text === '1') {
+          await sendText(summary);
           await sendText('⏳ *Aguarde um momento...* Estou gerando o seu código Pix exclusivo para esta transação.');
 
           try {
@@ -384,73 +356,46 @@ class BotService {
             await sendText('✅ *Pix gerado com sucesso!*');
             await sendText(`🧾 Solicitação de recarga: *${session.rechargeRequestId}*`);
             await sendText(`Copia e Cola:\n\n\`${paymentResult.copy_paste}\``);
-            await sendText('Clique no código acima para copiar, pague no seu banco e o acesso será liberado em instantes! 🚀');
-            session.stage = STAGES.COMPLETING;
+            await sendText('Agora envie o *comprovante do Pix* em imagem ou PDF para seguirmos com a validação. 📎');
+            session.stage = STAGES.AWAIT_PAYMENT_PROOF;
             break;
           } catch (error) {
             console.error('Erro ao gerar Pix no bot:', error);
             const { pix_key: pixKey } = integrationsService.getBotConfig();
             await sendText('❌ *Erro Temporário:* Não consegui gerar o código dinâmico agora.');
-            await sendText(`Mas não se preocupe! Você pode pagar usando nossa *Chave Pix Fixa* abaixo:\n\n🔑 \`${pixKey}\``);
-            await sendText('Após pagar, envie o comprovante aqui para agilizar seu processo.');
-            session.stage = STAGES.COMPLETING;
+            await sendText(`Você pode pagar usando a *Chave Pix* abaixo:\n\n🔑 \`${pixKey}\``);
+            await sendText('Depois do pagamento, envie o comprovante em imagem ou PDF para análise.');
+            session.stage = STAGES.AWAIT_PAYMENT_PROOF;
             break;
           }
         }
 
-        if (text === '2') {
-          try {
-            const rechargeRequest = await rechargeRequestsService.create({
-              credentialId: session.credential?.id,
-              serverId: session.panel_id,
-              accountLogin: session.login,
-              quantity: session.quantity,
-              unitPrice: session.unitPrice,
-              paymentMethod: 'cripto',
-              requestedByPhone: from
-            });
-            session.rechargeRequestId = rechargeRequest.id;
-          } catch (error) {
-            console.error('Erro ao criar recarga cripto no bot:', error);
-          }
-
-          const criptoWallet = process.env.CRIPTO_WALLET || 'SUA_CARTEIRA_CRIPTO_AQUI';
-          if (session.rechargeRequestId) {
-            await sendText(`🧾 Solicitação de recarga: *${session.rechargeRequestId}*`);
-          }
-          await sendText(`💎 *Pagamento via Cripto*\n\nDeposite na carteira abaixo:\n\n\`${criptoWallet}\`\n\nApós o envio, encaminhe o comprovante aqui.`);
-          session.stage = STAGES.COMPLETING;
-          break;
-        }
-
-        await sendButtons('Selecione a forma de pagamento para continuar 👇', [
-          { id: '1', title: 'PIX ⚡' },
-          { id: '2', title: 'CRIPTO ₿' }
-        ]);
+        await sendText('Informe uma quantidade válida para continuar.');
+        await this.sendEndConversationOption(sendButtons);
         break;
 
-      case STAGES.COMPLETING:
+      case STAGES.AWAIT_PAYMENT_PROOF:
+        if (session.rechargeRequestId && media && ['image', 'document'].includes(messageType)) {
+          try {
+            await paymentProofsService.createFromBotMessage({
+              rechargeRequestId: session.rechargeRequestId,
+              senderPhone: from,
+              messageId,
+              media
+            });
 
-        if (text?.toLowerCase().includes('comprovante') || text?.includes('✅') || text?.toLowerCase() === 'paguei') {
-          if (session.rechargeRequestId) {
-            try {
-              await rechargeRequestsService.updatePayment(session.rechargeRequestId, {
-                paymentStatus: 'pago'
-              });
-            } catch (error) {
-              console.error('Erro ao atualizar status de pagamento da recarga:', error);
-            }
+            await sendText('Recebemos seu comprovante e ele foi encaminhado para análise e validação. ⏳');
+            await sendText(`Assim que a conferência da recarga *${session.rechargeRequestId}* for concluída, avisaremos você.`);
+            session.stage = STAGES.START;
+            break;
+          } catch (error) {
+            console.error('Erro ao processar comprovante do Pix:', error);
+            await sendText('Não consegui processar esse comprovante. Tente enviar novamente em imagem ou PDF.');
+            break;
           }
-
-          await sendText('Recebemos sua mensagem! Nosso sistema está verificando o pagamento. ⏳');
-          setTimeout(async () => {
-            await sendText('RECARGA FINALIZADA ✅\n\n*Acesso Liberado!* Muito obrigado por escolher a PulsePay. 🤝');
-          }, 5000);
-          session.stage = STAGES.START;
-          break;
         }
 
-        await sendText('Quando finalizar o pagamento, envie aqui: *paguei* ou o comprovante para concluirmos sua recarga.');
+        await sendText('Para concluir, envie o *comprovante do Pix* em imagem ou PDF aqui no chat.');
         await this.sendEndConversationOption(sendButtons);
         break;
 

@@ -23,6 +23,10 @@ class BotIntegrationsService {
     };
   }
 
+  getGraphApiBaseUrl() {
+    return process.env.WHATSAPP_GRAPH_API_URL || 'https://graph.facebook.com/v22.0';
+  }
+
   async makeRequest(url, { method = 'POST', payload, headers = {} } = {}) {
     const hasPayload = payload !== undefined && payload !== null;
     const data = hasPayload ? JSON.stringify(payload) : null;
@@ -51,6 +55,34 @@ class BotIntegrationsService {
 
       req.on('error', (error) => reject(error));
       if (data) req.write(data);
+      req.end();
+    });
+  }
+
+  async makeBinaryRequest(url, { method = 'GET', headers = {} } = {}) {
+    const protocol = url.startsWith('https') ? https : http;
+
+    return new Promise((resolve, reject) => {
+      const req = protocol.request(url, {
+        method,
+        headers
+      }, (res) => {
+        const chunks = [];
+        res.on('data', (chunk) => chunks.push(chunk));
+        res.on('end', () => {
+          const buffer = Buffer.concat(chunks);
+          if (res.statusCode >= 400) {
+            return reject(new Error(`Status ${res.statusCode}: ${buffer.toString('utf8')}`));
+          }
+
+          resolve({
+            buffer,
+            mimeType: res.headers['content-type'] || null
+          });
+        });
+      });
+
+      req.on('error', reject);
       req.end();
     });
   }
@@ -206,6 +238,43 @@ class BotIntegrationsService {
     } catch (_error) {
       throw new Error(`Resposta inválida ao atualizar pagamento: ${body}`);
     }
+  }
+
+  async fetchWhatsAppMediaInfo(mediaId) {
+    const config = this.getBotConfig();
+    const body = await this.makeRequest(`${this.getGraphApiBaseUrl()}/${mediaId}`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${config.access_token}`
+      }
+    });
+
+    try {
+      return JSON.parse(body);
+    } catch (_error) {
+      throw new Error(`Resposta invalida ao consultar midia do WhatsApp: ${body}`);
+    }
+  }
+
+  async downloadWhatsAppMedia(mediaId) {
+    const config = this.getBotConfig();
+    const info = await this.fetchWhatsAppMediaInfo(mediaId);
+    if (!info?.url) {
+      throw new Error('A API da Meta nao retornou URL da midia');
+    }
+
+    const file = await this.makeBinaryRequest(info.url, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${config.access_token}`
+      }
+    });
+
+    return {
+      ...file,
+      fileName: info?.file_name || null,
+      meta: info
+    };
   }
 }
 
