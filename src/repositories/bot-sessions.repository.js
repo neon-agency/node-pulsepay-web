@@ -12,8 +12,11 @@ class BotSessionsRepository {
     }
 
     return {
+      phone: row.phone,
       ...payload,
-      stage: row.stage || payload.stage || 'START'
+      stage: row.stage || payload.stage || 'START',
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
     };
   }
 
@@ -76,6 +79,14 @@ class BotSessionsRepository {
       });
 
     return { stage: 'START' };
+  }
+
+  async listActiveSessions() {
+    const rows = await db('bot_sessions')
+      .whereNot({ stage: 'START' })
+      .select('*');
+
+    return rows.map((row) => this.mapRow(row));
   }
 }
 

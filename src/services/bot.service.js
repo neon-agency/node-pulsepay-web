@@ -132,6 +132,9 @@ class BotService {
 
   async processIncomingMessage({ from, text, messageType = 'text', media = null, messageId = null }) {
     const session = await sessionsRepository.getOrCreate(from);
+    const interactionAt = new Date().toISOString();
+    session.lastUserMessageAt = interactionAt;
+    session.idleReminderSentAt = null;
 
     const sendText = async (message) => integrationsService.sendWhatsAppText(from, message);
     const sendButtons = async (message, buttons, options = { includeEnd: true }) => {
@@ -231,8 +234,27 @@ class BotService {
           break;
         } catch (error) {
           console.error('Erro ao resolver credencial no bot:', error);
-          await sendText(
-            '❌ Não consegui validar essa credencial.\n\nConfirme se você enviou no formato *nome + 4 dígitos*.\n*Exemplo:* `joao 1265`'
+          if (error?.statusCode === 404) {
+            await sendButtons(
+              '❌ Não encontrei uma credencial com esse *nome + 4 dígitos*.\n\nConfira se o nome está igual ao cadastro e tente novamente.\n*Exemplo:* `joao 1265`',
+              []
+            );
+            session.stage = STAGES.ASK_CREDENTIAL_COMBINED;
+            break;
+          }
+
+          if (error?.statusCode === 409) {
+            await sendButtons(
+              `⚠️ ${error.message}\n\nSe precisar, envie novamente no formato:\n*Exemplo:* \`joao 1265\``,
+              []
+            );
+            session.stage = STAGES.ASK_CREDENTIAL_COMBINED;
+            break;
+          }
+
+          await sendButtons(
+            '❌ Não consegui validar essa credencial agora por um erro interno.\n\nTente novamente em instantes ou chame o suporte.',
+            []
           );
           session.stage = STAGES.ASK_CREDENTIAL_COMBINED;
           break;
@@ -311,8 +333,6 @@ class BotService {
         }
 
         if (text === SUMMARY_CONFIRM_ID) {
-          await sendText('⏳ *Aguarde um momento...* Estou gerando o seu código Pix exclusivo para esta transação.');
-
           try {
             const rechargeRequest = await rechargeRequestsService.create({
               credentialId: session.credential?.id,
@@ -325,39 +345,17 @@ class BotService {
             });
 
             session.rechargeRequestId = rechargeRequest.id;
-            const paymentResult = await integrationsService.callPaymentApi({
-              provider: 'efi',
-              method: 'pix',
-              amount: Math.round(session.total * 100),
-              currency: 'BRL',
-              description: `Renovação ${session.panel_name} - ${session.login}`,
-              pix_key: integrationsService.getBotConfig().pix_key,
-              customer: {
-                name: `WhatsApp ${from}`,
-                email: `${from}@whatsapp.com`,
-                cpf: '00000000000'
-              },
-              metadata: {
-                login: session.login,
-                phone: from,
-                plan_id: session.panel_id
-              }
-            });
-
-            if (!paymentResult.copy_paste) {
-              throw new Error('API não retornou o código Pix.');
-            }
+            const { pix_key: pixKey } = integrationsService.getBotConfig();
 
             await rechargeRequestsService.updatePayment(session.rechargeRequestId, {
               paymentStatus: 'pix_gerado',
               paymentMethod: 'pix',
-              pixCode: paymentResult.copy_paste,
-              pixTxid: paymentResult.txid || paymentResult.id || null
+              pixCode: pixKey,
+              pixTxid: null
             });
 
-            await sendText('✅ *Pix gerado com sucesso!*');
             await sendText(`🧾 Solicitação de recarga: *${session.rechargeRequestId}*`);
-            await sendText(`Copia e Cola:\n\n\`${paymentResult.copy_paste}\``);
+            await sendText(`Você pode pagar usando a *Chave Pix* abaixo:\n\n🔑 \`${pixKey}\``);
             await sendText('Agora envie o *comprovante do Pix* em imagem ou PDF para seguirmos com a validação. 📎');
             session.stage = STAGES.AWAIT_PAYMENT_PROOF;
             break;

@@ -1,4 +1,10 @@
 {
+  "crons": [
+    {
+      "path": "/api/bot-timeouts",
+      "schedule": "* * * * *"
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/(auth|servers|clients|dashboard|credentials|recharge-requests|bot)(.*)",
