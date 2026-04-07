@@ -11,20 +11,10 @@ module.exports = async function handler(req, res) {
       const bodyLength = typeof body === 'string' ? body.length : 0;
       console.log(`[Vercel Webhook] Payload recebido (${bodyLength} chars)`);
 
-      // Responde imediatamente ao WhatsApp para evitar timeout da função serverless.
-      res.status(200).send('OK');
+      await bot.handleWebhook(body);
 
-      // Continua o processamento em background sem bloquear a resposta HTTP.
-      Promise.resolve()
-        .then(() => bot.handleWebhook(body))
-        .then(() => {
-          console.log('[Vercel Webhook] Processado com sucesso');
-        })
-        .catch((error) => {
-          console.error('[Vercel Webhook] Erro async:', error);
-        });
-
-      return;
+      console.log('[Vercel Webhook] Processado com sucesso');
+      return res.status(200).send('OK');
     } catch (error) {
       console.error("[Vercel Webhook] Erro crítico:", error);
       return res.status(500).json({ error: 'Internal Server Error', details: error.message });

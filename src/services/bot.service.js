@@ -190,8 +190,14 @@ class BotService {
           break;
         }
 
-        session.stage = STAGES.START;
-        await this.processIncomingMessage({ from, text: '' });
+        await sendButtons(
+          'Escolha uma das opções para continuar 👇',
+          [
+            { id: '1', title: '⚡ NOVA RECARGA' },
+            { id: '2', title: '❓ DÚVIDAS' }
+          ]
+        );
+        session.stage = STAGES.ASK_PANEL;
         break;
 
       case STAGES.ASK_DOUBT:
