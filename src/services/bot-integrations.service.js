@@ -134,8 +134,8 @@ class BotIntegrationsService {
         type: 'interactive',
         interactive_type: 'list',
         message,
-        button_text: buttonText,
-        sections: [
+        list_button: buttonText,
+        list_sections: [
           {
             title: 'Servidores',
             rows: rows.map((row) => ({
