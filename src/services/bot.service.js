@@ -8,18 +8,18 @@ const STAGES = {
   START: 'START',
   ASK_PANEL: 'ASK_PANEL',
   ASK_DOUBT: 'ASK_DOUBT',
-  ASK_CREDENTIAL_NAME: 'ASK_CREDENTIAL_NAME',
-  ASK_CREDENTIAL_LAST4: 'ASK_CREDENTIAL_LAST4',
+  ASK_CREDENTIAL_COMBINED: 'ASK_CREDENTIAL_COMBINED',
   ASK_SERVER: 'ASK_SERVER',
   ASK_QUANTITY: 'ASK_QUANTITY',
+  CONFIRM_SUMMARY: 'CONFIRM_SUMMARY',
   AWAIT_PAYMENT_PROOF: 'AWAIT_PAYMENT_PROOF'
 };
 
-const SERVER_LIST_PAGE_SIZE = 4;
-const SERVER_BUTTON_PAGE_SIZE = 2;
-const SERVER_NEXT_PAGE_ID = 'server:more';
 const END_CONVERSATION_ID = 'end:conversation';
 const END_CONVERSATION_TITLE = '🛑 Encerrar';
+const SUMMARY_CONFIRM_ID = 'summary:confirm';
+const SUMMARY_EDIT_QUANTITY_ID = 'summary:edit-quantity';
+const SUMMARY_CANCEL_ID = 'summary:cancel';
 
 class BotService {
   formatMoney(value) {
@@ -29,6 +29,22 @@ class BotService {
 
   sanitizeLast4(value) {
     return String(value || '').replace(/\D/g, '').slice(-4);
+  }
+
+  parseCredentialInput(value) {
+    const normalized = String(value || '').trim().replace(/\s+/g, ' ');
+    const match = normalized.match(/^(.*?)[\s\-_/.,:;]+(\d{4})$/);
+    if (!match) {
+      return null;
+    }
+
+    const name = String(match[1] || '').trim();
+    const last4 = this.sanitizeLast4(match[2]);
+    if (!name || last4.length !== 4) {
+      return null;
+    }
+
+    return { name, last4 };
   }
 
   normalizeServerButtonTitle(name) {
@@ -57,30 +73,12 @@ class BotService {
     return [...buttons, { id: END_CONVERSATION_ID, title: END_CONVERSATION_TITLE }];
   }
 
-  async sendEndConversationOption(sendButtons) {
-    await sendButtons('Se desejar, você pode encerrar a conversa agora.', [
-      { id: END_CONVERSATION_ID, title: END_CONVERSATION_TITLE }
-    ], { includeEnd: false });
-  }
-
-  async sendServerList(sendList, serverChoices, page = 0, isFirstPrompt = false) {
-    const totalPages = Math.max(1, Math.ceil(serverChoices.length / SERVER_LIST_PAGE_SIZE));
-    const safePage = Math.max(0, Math.min(page, totalPages - 1));
-    const start = safePage * SERVER_LIST_PAGE_SIZE;
-    const end = start + SERVER_LIST_PAGE_SIZE;
-    const currentRows = serverChoices.slice(start, end).map((choice) => ({
+  async sendServerList(sendList, serverChoices, isFirstPrompt = false) {
+    const currentRows = serverChoices.map((choice) => ({
       id: choice.buttonId,
       title: choice.title,
       description: choice.serverName
     }));
-
-    if (end < serverChoices.length) {
-      currentRows.push({
-        id: SERVER_NEXT_PAGE_ID,
-        title: '➡️ Próximos',
-        description: `Página ${safePage + 2} de ${totalPages}`
-      });
-    }
 
     currentRows.push({
       id: END_CONVERSATION_ID,
@@ -89,8 +87,8 @@ class BotService {
     });
 
     const title = isFirstPrompt
-      ? `Excelente! 🚀 Agora selecione o *Servidor* vinculado à sua credencial:\n\nPágina ${safePage + 1}/${totalPages}`
-      : `Selecione um servidor 👇\n\nPágina ${safePage + 1}/${totalPages}`;
+      ? 'Excelente! 🚀 Agora selecione o *Servidor* vinculado à sua credencial:'
+      : 'Selecione um servidor 👇';
 
     await sendList(
       title,
@@ -106,39 +104,29 @@ class BotService {
       })
     );
 
-    return safePage;
+    return 0;
   }
 
-  async sendServerPicker(sendList, sendButtons, serverChoices, page = 0, isFirstPrompt = false) {
+  async sendServerPicker(sendList, sendButtons, serverChoices, isFirstPrompt = false) {
     try {
-      return await this.sendServerList(sendList, serverChoices, page, isFirstPrompt);
+      return await this.sendServerList(sendList, serverChoices, isFirstPrompt);
     } catch (error) {
       // Fallback para provedores que não suportam lista interativa.
       console.error('Falha ao enviar lista de servidores; usando fallback de botões:', error);
 
-      const totalPages = Math.max(1, Math.ceil(serverChoices.length / SERVER_BUTTON_PAGE_SIZE));
-      const safePage = Math.max(0, Math.min(page, totalPages - 1));
-      const start = safePage * SERVER_BUTTON_PAGE_SIZE;
-      const end = start + SERVER_BUTTON_PAGE_SIZE;
-      const currentChoices = serverChoices.slice(start, end);
-
-      const buttons = currentChoices.map((choice) => ({
+      const buttons = serverChoices.map((choice) => ({
         id: choice.buttonId,
         title: choice.title
       }));
 
-      if (end < serverChoices.length) {
-        buttons.push({ id: SERVER_NEXT_PAGE_ID, title: '➡️ Próximos' });
-      } else if (buttons.length < 3) {
-        buttons.push({ id: END_CONVERSATION_ID, title: END_CONVERSATION_TITLE });
-      }
+      buttons.push({ id: END_CONVERSATION_ID, title: END_CONVERSATION_TITLE });
 
       const title = isFirstPrompt
-        ? `Excelente! 🚀 Agora selecione o *Servidor* vinculado à sua credencial:\n\nPágina ${safePage + 1}/${totalPages}`
-        : `Selecione um servidor 👇\n\nPágina ${safePage + 1}/${totalPages}`;
+        ? 'Excelente! 🚀 Agora selecione o *Servidor* vinculado à sua credencial:'
+        : 'Selecione um servidor 👇';
 
       await sendButtons(title, buttons, { includeEnd: false });
-      return safePage;
+      return 0;
     }
   }
 
@@ -177,15 +165,17 @@ class BotService {
 
       case STAGES.ASK_PANEL:
         if (text === '1') {
-          await sendText('Perfeito! ✅ Para continuar, informe o *nome* usado na credencial:');
-          await this.sendEndConversationOption(sendButtons);
-          session.stage = STAGES.ASK_CREDENTIAL_NAME;
+          await sendButtons(
+            'Perfeito! ✅\n\nEnvie o *nome + os 4 últimos dígitos da credencial na mesma mensagem*.\n\n*Formato correto:*\n`joao 1265`\n`maria silva 4321`'
+            ,
+            []
+          );
+          session.stage = STAGES.ASK_CREDENTIAL_COMBINED;
           break;
         }
 
         if (text === '2') {
-          await sendText('Com certeza! ✍️\n\nMe envie sua dúvida e eu vou encaminhar para nossa equipe agora mesmo.');
-          await this.sendEndConversationOption(sendButtons);
+          await sendButtons('Com certeza! ✍️\n\nMe envie sua dúvida e eu vou encaminhar para nossa equipe agora mesmo.', []);
           session.stage = STAGES.ASK_DOUBT;
           break;
         }
@@ -202,8 +192,7 @@ class BotService {
 
       case STAGES.ASK_DOUBT:
         if (!text || !text.trim()) {
-          await sendText('Pode me descrever sua dúvida em uma mensagem?');
-          await this.sendEndConversationOption(sendButtons);
+          await sendButtons('Pode me descrever sua dúvida em uma mensagem?', []);
           break;
         }
 
@@ -211,31 +200,20 @@ class BotService {
         session.stage = STAGES.START;
         break;
 
-      case STAGES.ASK_CREDENTIAL_NAME:
-        if (!text || text.trim().length < 2) {
-          await sendText('Por favor, informe um nome válido para continuar.');
-          await this.sendEndConversationOption(sendButtons);
-          break;
-        }
-
-        session.credentialName = text.trim();
-        await sendText('Ótimo! Agora envie os *4 últimos dígitos* da sua credencial:');
-        await this.sendEndConversationOption(sendButtons);
-        session.stage = STAGES.ASK_CREDENTIAL_LAST4;
-        break;
-
-      case STAGES.ASK_CREDENTIAL_LAST4: {
-        const last4 = this.sanitizeLast4(text);
-        if (last4.length !== 4) {
-          await sendText('Os últimos 4 dígitos precisam ter exatamente 4 números. Tente novamente:');
-          await this.sendEndConversationOption(sendButtons);
+      case STAGES.ASK_CREDENTIAL_COMBINED: {
+        const parsedCredential = this.parseCredentialInput(text);
+        if (!parsedCredential) {
+          await sendButtons(
+            'Não consegui entender. Envie *nome + 4 dígitos* na mesma mensagem.\n\n*Exemplo:*\n`joao 1265`',
+            []
+          );
           break;
         }
 
         try {
           const resolved = await credentialsService.resolveCredentialWithServers({
-            nome: session.credentialName,
-            last4
+            nome: parsedCredential.name,
+            last4: parsedCredential.last4
           });
 
           const serverChoices = this.buildServerChoices(resolved.servers || []);
@@ -246,27 +224,22 @@ class BotService {
           }
 
           session.credential = resolved.credential;
+          session.credentialName = parsedCredential.name;
           session.serverChoices = serverChoices;
-          session.serverPage = await this.sendServerPicker(sendList, sendButtons, serverChoices, 0, true);
+          session.serverPage = await this.sendServerPicker(sendList, sendButtons, serverChoices, true);
           session.stage = STAGES.ASK_SERVER;
           break;
         } catch (error) {
           console.error('Erro ao resolver credencial no bot:', error);
           await sendText(
-            '❌ Não consegui validar essa credencial. Confira o *nome* e os *4 últimos dígitos*.'
+            '❌ Não consegui validar essa credencial.\n\nConfirme se você enviou no formato *nome + 4 dígitos*.\n*Exemplo:* `joao 1265`'
           );
-          session.stage = STAGES.ASK_CREDENTIAL_NAME;
+          session.stage = STAGES.ASK_CREDENTIAL_COMBINED;
           break;
         }
       }
 
       case STAGES.ASK_SERVER: {
-        if (text === SERVER_NEXT_PAGE_ID && Array.isArray(session.serverChoices) && session.serverChoices.length > 0) {
-          const nextPage = (session.serverPage || 0) + 1;
-          session.serverPage = await this.sendServerPicker(sendList, sendButtons, session.serverChoices, nextPage, false);
-          break;
-        }
-
         const selectedServer = this.resolveServerSelection(session.serverChoices, text);
 
         if (selectedServer) {
@@ -274,15 +247,14 @@ class BotService {
           session.panel_name = selectedServer.serverName;
           session.unitPrice = Number(selectedServer.unitPrice);
           session.login = session.credential?.nome || session.credentialName;
-          await sendText(`Perfeito! Servidor *${session.panel_name}* selecionado.\n\nAgora me informe quantos créditos você deseja recarregar.`);
-          await this.sendEndConversationOption(sendButtons);
+          await sendButtons(`Perfeito! Servidor *${session.panel_name}* selecionado.\n\nAgora me informe quantos créditos você deseja recarregar.`, []);
           session.stage = STAGES.ASK_QUANTITY;
           break;
         }
 
         if (Array.isArray(session.serverChoices) && session.serverChoices.length > 0) {
           await sendText('Ops! Escolha uma opção na lista de servidores.');
-          session.serverPage = await this.sendServerPicker(sendList, sendButtons, session.serverChoices, session.serverPage || 0, false);
+          session.serverPage = await this.sendServerPicker(sendList, sendButtons, session.serverChoices, false);
           break;
         }
 
@@ -295,8 +267,7 @@ class BotService {
         if (text && text.length >= 1) {
           const qty = parseInt(text, 10);
           if (Number.isNaN(qty) || qty <= 0) {
-            await sendText('⚠️ Por favor, digite um número inteiro para a quantidade de créditos.');
-            await this.sendEndConversationOption(sendButtons);
+            await sendButtons('⚠️ Por favor, digite um número inteiro para a quantidade de créditos.', []);
             break;
           }
 
@@ -314,7 +285,32 @@ class BotService {
             '━━━━━━━━━━━━━━'
           ].join('\n');
 
-          await sendText(summary);
+          await sendButtons(`${summary}\n\nConfira o resumo acima e escolha como deseja continuar 👇`, [
+            { id: SUMMARY_CONFIRM_ID, title: '✅ Continuar' },
+            { id: SUMMARY_EDIT_QUANTITY_ID, title: '✏️ Alterar qtd' },
+            { id: SUMMARY_CANCEL_ID, title: '❌ Cancelar' }
+          ], { includeEnd: false });
+          session.stage = STAGES.CONFIRM_SUMMARY;
+          break;
+        }
+
+        await sendButtons('Informe uma quantidade válida para continuar.', []);
+        break;
+
+      case STAGES.CONFIRM_SUMMARY:
+        if (text === SUMMARY_EDIT_QUANTITY_ID) {
+          await sendButtons('Sem problemas. Informe a *nova quantidade de créditos* que você deseja:', []);
+          session.stage = STAGES.ASK_QUANTITY;
+          break;
+        }
+
+        if (text === SUMMARY_CANCEL_ID) {
+          await sendText('Pedido cancelado com sucesso. Se quiser iniciar uma nova recarga, é só me chamar. 👋');
+          session.stage = STAGES.START;
+          break;
+        }
+
+        if (text === SUMMARY_CONFIRM_ID) {
           await sendText('⏳ *Aguarde um momento...* Estou gerando o seu código Pix exclusivo para esta transação.');
 
           try {
@@ -376,8 +372,11 @@ class BotService {
           }
         }
 
-        await sendText('Informe uma quantidade válida para continuar.');
-        await this.sendEndConversationOption(sendButtons);
+        await sendButtons('Escolha uma opção para continuar com o pedido 👇', [
+          { id: SUMMARY_CONFIRM_ID, title: '✅ Continuar' },
+          { id: SUMMARY_EDIT_QUANTITY_ID, title: '✏️ Alterar qtd' },
+          { id: SUMMARY_CANCEL_ID, title: '❌ Cancelar' }
+        ], { includeEnd: false });
         break;
 
       case STAGES.AWAIT_PAYMENT_PROOF:
@@ -401,8 +400,7 @@ class BotService {
           }
         }
 
-        await sendText('Para concluir, envie o *comprovante do Pix* em imagem ou PDF aqui no chat.');
-        await this.sendEndConversationOption(sendButtons);
+        await sendButtons('Para concluir, envie o *comprovante do Pix* em imagem ou PDF aqui no chat.', []);
         break;
 
       default:
