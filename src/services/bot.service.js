@@ -55,8 +55,9 @@ class BotService {
   }
 
   buildServerChoices(servers) {
-    return (servers || []).map((server) => ({
+    return (servers || []).map((server, index) => ({
       buttonId: `server:${server.serverId}`,
+      optionId: String(index + 1),
       title: this.normalizeServerButtonTitle(server.servidor),
       serverId: String(server.serverId),
       serverName: String(server.servidor || '').trim(),
@@ -66,7 +67,32 @@ class BotService {
 
   resolveServerSelection(serverChoices, input) {
     if (!Array.isArray(serverChoices) || !input) return null;
-    return serverChoices.find((choice) => choice.buttonId === input) || null;
+    const normalizedInput = String(input || '').trim().toLowerCase();
+    return (
+      serverChoices.find((choice) => choice.buttonId === input) ||
+      serverChoices.find((choice) => choice.optionId === normalizedInput) ||
+      serverChoices.find((choice) => choice.serverName.trim().toLowerCase() === normalizedInput) ||
+      null
+    );
+  }
+
+  buildServerPrompt(serverChoices, isFirstPrompt = false) {
+    const header = isFirstPrompt
+      ? 'Excelente! 🚀 Agora selecione o *Servidor* vinculado à sua credencial:'
+      : 'Selecione um servidor 👇';
+
+    const lines = serverChoices.map((choice) =>
+      `${choice.optionId}. *${choice.serverName}* - ${this.formatMoney(choice.unitPrice)} por crédito`
+    );
+
+    return [
+      header,
+      '',
+      ...lines,
+      '',
+      'Responda com o *número* ou com o *nome do servidor*.',
+      'Se quiser, use o botão *Encerrar*.'
+    ].join('\n');
   }
 
   withEndConversationButton(buttons) {
@@ -109,7 +135,7 @@ class BotService {
     return 0;
   }
 
-  async sendServerPicker(sendList, sendButtons, serverChoices, isFirstPrompt = false) {
+  async sendServerPicker(sendList, sendButtons, sendText, serverChoices, isFirstPrompt = false) {
     try {
       return await this.sendServerList(sendList, serverChoices, isFirstPrompt);
     } catch (error) {
@@ -121,13 +147,15 @@ class BotService {
         title: choice.title
       }));
 
-      buttons.push({ id: END_CONVERSATION_ID, title: END_CONVERSATION_TITLE });
+      if (buttons.length <= 2) {
+        buttons.push({ id: END_CONVERSATION_ID, title: END_CONVERSATION_TITLE });
+        const title = this.buildServerPrompt(serverChoices, isFirstPrompt);
+        await sendButtons(title, buttons, { includeEnd: false });
+        return 0;
+      }
 
-      const title = isFirstPrompt
-        ? 'Excelente! 🚀 Agora selecione o *Servidor* vinculado à sua credencial:'
-        : 'Selecione um servidor 👇';
-
-      await sendButtons(title, buttons, { includeEnd: false });
+      await sendText(this.buildServerPrompt(serverChoices, isFirstPrompt));
+      await sendButtons('Quando decidir, escolha *Encerrar* ou responda com o número/nome do servidor.', []);
       return 0;
     }
   }
@@ -250,7 +278,7 @@ class BotService {
           session.credential = resolved.credential;
           session.credentialName = parsedCredential.name;
           session.serverChoices = serverChoices;
-          session.serverPage = await this.sendServerPicker(sendList, sendButtons, serverChoices, true);
+          session.serverPage = await this.sendServerPicker(sendList, sendButtons, sendText, serverChoices, true);
           session.stage = STAGES.ASK_SERVER;
           break;
         } catch (error) {
@@ -297,7 +325,7 @@ class BotService {
 
         if (Array.isArray(session.serverChoices) && session.serverChoices.length > 0) {
           await sendText('Ops! Escolha uma opção na lista de servidores.');
-          session.serverPage = await this.sendServerPicker(sendList, sendButtons, session.serverChoices, false);
+          session.serverPage = await this.sendServerPicker(sendList, sendButtons, sendText, session.serverChoices, false);
           break;
         }
 
