@@ -358,7 +358,7 @@ class BotService {
 
           await sendButtons(`${summary}\n\nConfira o resumo acima e escolha como deseja continuar 👇`, [
             { id: SUMMARY_CONFIRM_ID, title: '✅ Continuar' },
-            { id: SUMMARY_EDIT_QUANTITY_ID, title: '✏️ Alterar qtd' },
+            { id: SUMMARY_EDIT_QUANTITY_ID, title: '✏️ Alterar quantidade' },
             { id: SUMMARY_CANCEL_ID, title: '❌ Cancelar' }
           ], { includeEnd: false });
           session.stage = STAGES.CONFIRM_SUMMARY;
@@ -421,7 +421,7 @@ class BotService {
 
         await sendButtons('Escolha uma opção para continuar com o pedido 👇', [
           { id: SUMMARY_CONFIRM_ID, title: '✅ Continuar' },
-          { id: SUMMARY_EDIT_QUANTITY_ID, title: '✏️ Alterar qtd' },
+          { id: SUMMARY_EDIT_QUANTITY_ID, title: '✏️ Alterar quantidade' },
           { id: SUMMARY_CANCEL_ID, title: '❌ Cancelar' }
         ], { includeEnd: false });
         break;
