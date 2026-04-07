@@ -7,14 +7,24 @@ module.exports = async function handler(req, res) {
     try {
       // No Vercel, o body já vem parseado se for JSON pela infraestrutura deles
       const body = typeof req.body === 'object' ? JSON.stringify(req.body) : req.body;
-      
-      console.log("[Vercel Webhook] Body Recebido:", body);
-      
-      // Chama a mesma lógica que o seu server.js local chama
-      const result = await bot.handleWebhook(body);
-      
-      console.log("[Vercel Webhook] Processado com sucesso");
-      return res.status(200).send('OK');
+
+      const bodyLength = typeof body === 'string' ? body.length : 0;
+      console.log(`[Vercel Webhook] Payload recebido (${bodyLength} chars)`);
+
+      // Responde imediatamente ao WhatsApp para evitar timeout da função serverless.
+      res.status(200).send('OK');
+
+      // Continua o processamento em background sem bloquear a resposta HTTP.
+      Promise.resolve()
+        .then(() => bot.handleWebhook(body))
+        .then(() => {
+          console.log('[Vercel Webhook] Processado com sucesso');
+        })
+        .catch((error) => {
+          console.error('[Vercel Webhook] Erro async:', error);
+        });
+
+      return;
     } catch (error) {
       console.error("[Vercel Webhook] Erro crítico:", error);
       return res.status(500).json({ error: 'Internal Server Error', details: error.message });
