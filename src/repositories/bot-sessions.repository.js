@@ -1,20 +1,81 @@
-class BotSessionsRepository {
-  constructor() {
-    this.sessions = new Map();
-  }
+const db = require('../database/knex');
 
-  getOrCreate(phone) {
-    if (!this.sessions.has(phone)) {
-      this.sessions.set(phone, { stage: 'START' });
+class BotSessionsRepository {
+  mapRow(row) {
+    if (!row) return null;
+
+    let payload = {};
+    try {
+      payload = JSON.parse(row.payload_json || '{}');
+    } catch (_error) {
+      payload = {};
     }
 
-    return this.sessions.get(phone);
+    return {
+      ...payload,
+      stage: row.stage || payload.stage || 'START'
+    };
   }
 
-  reset(phone) {
-    const next = { stage: 'START' };
-    this.sessions.set(phone, next);
-    return next;
+  async getOrCreate(phone) {
+    const existing = await db('bot_sessions').where({ phone }).first();
+    if (existing) {
+      return this.mapRow(existing);
+    }
+
+    await db('bot_sessions').insert({
+      phone,
+      stage: 'START',
+      payload_json: JSON.stringify({})
+    });
+
+    return { stage: 'START' };
+  }
+
+  async save(phone, session) {
+    const payload = { ...(session || {}) };
+    delete payload.stage;
+
+    const stage = session?.stage || 'START';
+
+    await db('bot_sessions')
+      .insert({
+        phone,
+        stage,
+        payload_json: JSON.stringify(payload),
+        created_at: db.fn.now(),
+        updated_at: db.fn.now()
+      })
+      .onConflict('phone')
+      .merge({
+        stage,
+        payload_json: JSON.stringify(payload),
+        updated_at: db.fn.now()
+      });
+
+    return {
+      ...payload,
+      stage
+    };
+  }
+
+  async reset(phone) {
+    await db('bot_sessions')
+      .insert({
+        phone,
+        stage: 'START',
+        payload_json: JSON.stringify({}),
+        created_at: db.fn.now(),
+        updated_at: db.fn.now()
+      })
+      .onConflict('phone')
+      .merge({
+        stage: 'START',
+        payload_json: JSON.stringify({}),
+        updated_at: db.fn.now()
+      });
+
+    return { stage: 'START' };
   }
 }
 

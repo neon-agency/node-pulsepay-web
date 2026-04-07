@@ -143,7 +143,7 @@ class BotService {
   }
 
   async processIncomingMessage({ from, text, messageType = 'text', media = null, messageId = null }) {
-    const session = sessionsRepository.getOrCreate(from);
+    const session = await sessionsRepository.getOrCreate(from);
 
     const sendText = async (message) => integrationsService.sendWhatsAppText(from, message);
     const sendButtons = async (message, buttons, options = { includeEnd: true }) => {
@@ -153,7 +153,7 @@ class BotService {
     const sendList = async (message, buttonText, rows) => integrationsService.sendWhatsAppList(from, message, buttonText, rows);
 
     if (text === END_CONVERSATION_ID || text?.toLowerCase() === 'encerrar') {
-      sessionsRepository.reset(from);
+      await sessionsRepository.reset(from);
       await sendText('Conversa encerrada. Quando quiser voltar, é só mandar uma mensagem. 👋');
       return;
     }
@@ -400,9 +400,12 @@ class BotService {
         break;
 
       default:
-        sessionsRepository.reset(from);
+        await sessionsRepository.reset(from);
         await this.processIncomingMessage({ from, text: '' });
+        return;
     }
+
+    await sessionsRepository.save(from, session);
   }
 }
 
