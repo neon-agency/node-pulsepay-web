@@ -20,6 +20,8 @@ const END_CONVERSATION_TITLE = '🛑 Encerrar';
 const SUMMARY_CONFIRM_ID = 'summary:confirm';
 const SUMMARY_EDIT_QUANTITY_ID = 'summary:edit-quantity';
 const SUMMARY_CANCEL_ID = 'summary:cancel';
+const IDLE_WARNING_MS = 3 * 60 * 1000;
+const IDLE_CLOSE_MS = 5 * 60 * 1000;
 
 class BotService {
   formatMoney(value) {
@@ -132,9 +134,10 @@ class BotService {
 
   async processIncomingMessage({ from, text, messageType = 'text', media = null, messageId = null }) {
     const session = await sessionsRepository.getOrCreate(from);
+    const previousInteractionAt = session.lastUserMessageAt
+      ? new Date(session.lastUserMessageAt).getTime()
+      : null;
     const interactionAt = new Date().toISOString();
-    session.lastUserMessageAt = interactionAt;
-    session.idleReminderSentAt = null;
 
     const sendText = async (message) => integrationsService.sendWhatsAppText(from, message);
     const sendButtons = async (message, buttons, options = { includeEnd: true }) => {
@@ -142,6 +145,24 @@ class BotService {
       await integrationsService.sendWhatsAppButtons(from, message, prepared);
     };
     const sendList = async (message, buttonText, rows) => integrationsService.sendWhatsAppList(from, message, buttonText, rows);
+
+    if (previousInteractionAt && session.stage && session.stage !== STAGES.START) {
+      const inactiveForMs = Date.now() - previousInteractionAt;
+
+      if (inactiveForMs >= IDLE_CLOSE_MS) {
+        await sessionsRepository.reset(from);
+        await sendText('Esse atendimento foi encerrado por falta de interação. Vamos começar de novo. 👋');
+        await this.processIncomingMessage({ from, text: '', messageType: 'text', media: null, messageId: null });
+        return;
+      }
+
+      if (inactiveForMs >= IDLE_WARNING_MS) {
+        await sendText('Você ainda está aí? Vamos continuar de onde paramos. 🙂');
+      }
+    }
+
+    session.lastUserMessageAt = interactionAt;
+    session.idleReminderSentAt = null;
 
     if (text === END_CONVERSATION_ID || text?.toLowerCase() === 'encerrar') {
       await sessionsRepository.reset(from);
