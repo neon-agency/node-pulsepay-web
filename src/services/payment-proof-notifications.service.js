@@ -1,5 +1,6 @@
 const http = require('http');
 const https = require('https');
+const integrationsService = require('./bot-integrations.service');
 const usersRepository = require('../repositories/users.repository');
 const notificationsRepository = require('../repositories/recharge-request-notifications.repository');
 const { createId } = require('../utils/id');
@@ -66,7 +67,7 @@ class PaymentProofNotificationsService {
       : `${Math.round(proof.analysisConfidence * 100)}%`;
 
     return [
-      'Comprovante PIX recebido',
+      'Comprovante PIX recebido para validacao',
       '',
       `Recarga: ${recharge.id}`,
       `Cliente: ${recharge.credentialNome || '-'} (${recharge.credentialLast4 || '****'})`,
@@ -77,9 +78,35 @@ class PaymentProofNotificationsService {
       `IA: ${proof.analysisSummary || 'Sem resumo'}`,
       `Confianca IA: ${confidence}`,
       '',
-      `Validar no painel: ${this.getAdminUrl()}`,
-      `Busque pela recarga ${recharge.id} na aba de recargas.`
+      `Para aprovar: APROVAR ${recharge.id}`,
+      `Para rejeitar: REJEITAR ${recharge.id} motivo`,
+      '',
+      `Painel: ${this.getAdminUrl()}`
     ].join('\n');
+  }
+
+  async sendText(number, message) {
+    await this.makeRequest(`${this.getZapServiceUrl()}/api/send`, {
+      method: 'POST',
+      payload: {
+        number,
+        message
+      }
+    });
+  }
+
+  async sendMedia(number, mediaPayload) {
+    await this.makeRequest(`${this.getZapServiceUrl()}/api/send-media`, {
+      method: 'POST',
+      payload: {
+        number,
+        caption: mediaPayload.caption,
+        mimeType: mediaPayload.mimeType,
+        fileName: mediaPayload.fileName,
+        dataBase64: mediaPayload.dataBase64,
+        mediaType: mediaPayload.mediaType
+      }
+    });
   }
 
   async ensureNotificationRow(rechargeRequestId, recipientUserId, proofId) {
@@ -108,6 +135,23 @@ class PaymentProofNotificationsService {
     }
 
     const connected = await this.isZapConnected();
+    let mediaPayload = null;
+    if (proof.metaMediaId) {
+      try {
+        const file = await integrationsService.downloadWhatsAppMedia(proof.metaMediaId);
+        const mimeType = file.mimeType || proof.mimeType || 'image/jpeg';
+        mediaPayload = {
+          caption: `Comprovante da recarga ${recharge.id}`,
+          mimeType,
+          fileName: proof.fileName || `comprovante-${recharge.id}`,
+          dataBase64: file.buffer.toString('base64'),
+          mediaType: String(mimeType).startsWith('image/') ? 'image' : 'document'
+        };
+      } catch (error) {
+        console.error('Falha ao baixar comprovante para envio ao GO-zap-service:', error);
+      }
+    }
+
     for (const recipient of recipients) {
       const notification = await this.ensureNotificationRow(recharge.id, recipient.id, proof.id);
       if (notification.deliveryStatus === 'sent') {
@@ -120,13 +164,10 @@ class PaymentProofNotificationsService {
       }
 
       try {
-        await this.makeRequest(`${this.getZapServiceUrl()}/api/send`, {
-          method: 'POST',
-          payload: {
-            number: recipient.whatsappPhone,
-            message: this.buildMessage({ recharge, proof })
-          }
-        });
+        if (mediaPayload) {
+          await this.sendMedia(recipient.whatsappPhone, mediaPayload);
+        }
+        await this.sendText(recipient.whatsappPhone, this.buildMessage({ recharge, proof }));
         await notificationsRepository.markSent(notification.id);
       } catch (error) {
         await notificationsRepository.markFailed(

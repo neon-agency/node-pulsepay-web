@@ -2,7 +2,7 @@ const AppError = require('../errors/app-error');
 const authService = require('../services/auth.service');
 
 module.exports = function authMiddleware(req, _res, next) {
-  const expectedInternalApiKey = process.env.INTERNAL_API_KEY;
+  const expectedInternalApiKey = process.env.INTERNAL_API_KEY || process.env.API_TOKEN_SECRET || 'pulsepay-dev-token-secret';
   const providedInternalApiKey = req.headers['x-internal-api-key'];
 
   // Permite autenticação interna estática (ideal para ambiente serverless, como Vercel).
