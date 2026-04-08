@@ -63,17 +63,30 @@ class RechargeRequestPaymentProofsRepository {
       [row] = await db('recharge_request_payment_proofs')
         .insert(baseInsert)
         .returning('*');
-    } catch (error) {
-      console.error('Falha ao criar comprovante; tentando versao reduzida:', error);
-      [row] = await db('recharge_request_payment_proofs')
-        .insert({
-          ...baseInsert,
-          caption: null,
-          analysis_summary: null,
-          raw_analysis_json: null,
-          reviewer_notes: null
-        })
-        .returning('*');
+    } catch (firstError) {
+      console.error('Falha ao criar comprovante; tentando versao reduzida:', firstError);
+      try {
+        [row] = await db('recharge_request_payment_proofs')
+          .insert({
+            ...baseInsert,
+            caption: null,
+            analysis_summary: null,
+            raw_analysis_json: null,
+            reviewer_notes: null
+          })
+          .returning('*');
+      } catch (secondError) {
+        console.error('Falha ao criar comprovante reduzido; tentando versao minima:', secondError);
+        [row] = await db('recharge_request_payment_proofs')
+          .insert({
+            id: baseInsert.id,
+            recharge_request_id: baseInsert.recharge_request_id,
+            sender_phone: baseInsert.sender_phone,
+            meta_media_id: baseInsert.meta_media_id,
+            review_status: baseInsert.review_status
+          })
+          .returning('*');
+      }
     }
 
     return this.mapRow(row);

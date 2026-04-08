@@ -25,8 +25,19 @@ const SERVER_PREV_PREFIX = 'server:prev:';
 const SERVER_LIST_PAGE_SIZE = 8;
 const IDLE_WARNING_MS = 3 * 60 * 1000;
 const IDLE_CLOSE_MS = 5 * 60 * 1000;
+const GREETINGS = new Set(['oi', 'ola', 'olá', 'bom dia', 'boa tarde', 'boa noite', 'menu', 'iniciar', 'comecar', 'começar']);
 
 class BotService {
+  isGreeting(value) {
+    const normalized = String(value || '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+
+    return GREETINGS.has(normalized);
+  }
+
   formatMoney(value) {
     const amount = Number.isFinite(Number(value)) ? Number(value) : 0;
     return amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -203,13 +214,14 @@ class BotService {
 
       if (inactiveForMs >= IDLE_CLOSE_MS) {
         await sessionsRepository.reset(from);
-        await sendText('Esse atendimento foi encerrado por falta de interação. Vamos começar de novo. 👋');
-        await this.processIncomingMessage({ from, text: '', messageType: 'text', media: null, messageId: null });
-        return;
+        await sendText('Atendimento encerrado por inatividade. Caso queira renovar novamente, basta nos chamar! 👋');
+        if (!this.isGreeting(text)) {
+          return;
+        }
       }
 
       if (inactiveForMs >= IDLE_WARNING_MS) {
-        await sendText('Você ainda está aí? Vamos continuar de onde paramos. 🙂');
+        await sendText('Está aí ainda? 😊');
       }
     }
 
