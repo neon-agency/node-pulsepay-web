@@ -7,7 +7,7 @@ const { createId } = require('../utils/id');
 
 class PaymentProofNotificationsService {
   getEventType(proofId) {
-    return `payment_proof_pending_review:${proofId}`;
+    return `proof_review:${proofId}`;
   }
 
   getZapServiceUrl() {
