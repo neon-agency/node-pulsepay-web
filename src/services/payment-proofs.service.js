@@ -8,6 +8,37 @@ const rechargeRequestsService = require('./recharge-requests.service');
 const integrationsService = require('./bot-integrations.service');
 
 class PaymentProofsService {
+  async notifyCustomerOutcome(recharge, decision) {
+    if (!recharge?.requestedByPhone) {
+      return;
+    }
+
+    const normalizedDecision = String(decision || '').trim().toLowerCase();
+    const message = normalizedDecision === 'approved'
+      ? [
+          'Pagamento aprovado com sucesso. ✅',
+          '',
+          `Sua recarga ${recharge.id} foi validada e concluida.`,
+          `Servidor: ${recharge.servidor || '-'}`,
+          `Conta/Login: ${recharge.accountLogin || '-'}`,
+          `Quantidade: ${recharge.quantity}`,
+          '',
+          'Obrigado! Se precisar de algo, e so chamar.'
+        ].join('\n')
+      : [
+          'Nao conseguimos aprovar o comprovante enviado. ❌',
+          '',
+          `Recarga: ${recharge.id}`,
+          'Revise o pagamento e envie um novo comprovante para continuarmos a analise.'
+        ].join('\n');
+
+    try {
+      await integrationsService.sendWhatsAppText(recharge.requestedByPhone, message);
+    } catch (error) {
+      console.error('Falha ao notificar cliente sobre resultado da validacao:', error);
+    }
+  }
+
   async attachLatestProof(recharge) {
     const proof = await paymentProofsRepository.findLatestByRechargeRequestId(recharge.id);
     return {
@@ -123,8 +154,11 @@ class PaymentProofsService {
       });
     }
 
+    const updatedRecharge = await rechargeRequestsRepository.findById(rechargeRequestId);
+    await this.notifyCustomerOutcome(updatedRecharge, normalizedDecision);
+
     return {
-      recharge: await rechargeRequestsRepository.findById(rechargeRequestId),
+      recharge: updatedRecharge,
       proof: updatedProof
     };
   }
