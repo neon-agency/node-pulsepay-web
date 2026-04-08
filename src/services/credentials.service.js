@@ -189,16 +189,24 @@ class CredentialsService {
     }
 
     const links = await credentialServersRepository.findByCredentialIdWithServers(credential.id);
-    const activeLinks = links
-      .filter((link) => link.isActive)
-      .map((link) => ({
-        id: link.id,
-        serverId: link.serverId,
-        servidor: link.servidor,
-        basePrice: link.basePrice,
-        priceOverride: link.priceOverride,
-        effectivePrice: link.priceOverride === null ? link.basePrice : link.priceOverride
-      }));
+    const allServers = await serversRepository.findAll();
+    const linkByServerId = new Map(links.map((link) => [String(link.serverId), link]));
+
+    const availableServers = allServers.map((server) => {
+      const linked = linkByServerId.get(String(server.id)) || null;
+      const effectivePrice = linked && linked.isActive && linked.priceOverride !== null
+        ? linked.priceOverride
+        : server.basePrice;
+
+      return {
+        id: linked?.id || null,
+        serverId: String(server.id),
+        servidor: server.servidor,
+        basePrice: server.basePrice,
+        priceOverride: linked?.priceOverride ?? null,
+        effectivePrice
+      };
+    });
 
     return {
       credential: {
@@ -212,7 +220,7 @@ class CredentialsService {
         nome: client.nome,
         telefone: client.telefone
       },
-      servers: activeLinks
+      servers: availableServers
     };
   }
 }

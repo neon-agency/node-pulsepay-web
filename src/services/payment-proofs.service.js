@@ -38,14 +38,27 @@ class PaymentProofsService {
       reviewStatus: 'pending_review'
     });
 
-    const download = await integrationsService.downloadWhatsAppMedia(media.id);
-    const analysis = await paymentProofAnalysisService.analyze({
-      mimeType: download.mimeType || media.mimeType || 'image/jpeg',
-      fileBuffer: download.buffer,
-      expectedAmount: recharge.totalAmount,
-      pixIdentifier: recharge.pixTxid || process.env.PIX_KEY || null,
-      rechargeId: recharge.id
-    });
+    let analysis;
+    try {
+      const download = await integrationsService.downloadWhatsAppMedia(media.id);
+      analysis = await paymentProofAnalysisService.analyze({
+        mimeType: download.mimeType || media.mimeType || 'image/jpeg',
+        fileBuffer: download.buffer,
+        expectedAmount: recharge.totalAmount,
+        pixIdentifier: recharge.pixTxid || process.env.PIX_KEY || null,
+        rechargeId: recharge.id
+      });
+    } catch (error) {
+      console.error('Falha ao baixar/analisar comprovante; seguindo com revisao manual:', error);
+      analysis = {
+        ...paymentProofAnalysisService.buildFallback(recharge.totalAmount),
+        summary: 'Comprovante recebido e salvo. A analise automatica falhou, entao a revisao humana e obrigatoria.',
+        raw: {
+          reason: 'download_or_analysis_failed',
+          message: error instanceof Error ? error.message : 'Falha desconhecida'
+        }
+      };
+    }
 
     const updatedProof = await paymentProofsRepository.updateAnalysis(proof.id, {
       reviewStatus: 'pending_review',
@@ -58,10 +71,14 @@ class PaymentProofsService {
       rawAnalysisJson: JSON.stringify(analysis.raw || {})
     });
 
-    await paymentProofNotificationsService.notifyPendingReview({
-      recharge,
-      proof: updatedProof
-    });
+    try {
+      await paymentProofNotificationsService.notifyPendingReview({
+        recharge,
+        proof: updatedProof
+      });
+    } catch (error) {
+      console.error('Falha ao notificar revisao de comprovante:', error);
+    }
 
     return {
       recharge,
