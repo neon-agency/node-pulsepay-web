@@ -68,7 +68,9 @@ class SalesNotificationsService {
 
   buildMessage(recharge, recipient) {
     const createdAt = recharge.updatedAt || recharge.createdAt;
-    const formattedDate = new Date(createdAt).toLocaleString('pt-BR');
+    const formattedDate = new Date(createdAt).toLocaleString('pt-BR', {
+      timeZone: 'America/Sao_Paulo'
+    });
 
     return [
       `Venda confirmada`,
