@@ -20,6 +20,10 @@ const END_CONVERSATION_TITLE = '🛑 Encerrar';
 const SUMMARY_CONFIRM_ID = 'summary:confirm';
 const SUMMARY_EDIT_QUANTITY_ID = 'summary:edit-quantity';
 const SUMMARY_CANCEL_ID = 'summary:cancel';
+const PIX_COPY_KEY_ID = 'pix:copy-key';
+const SERVER_NEXT_PREFIX = 'server:next:';
+const SERVER_PREV_PREFIX = 'server:prev:';
+const SERVER_LIST_PAGE_SIZE = 8;
 const IDLE_WARNING_MS = 3 * 60 * 1000;
 const IDLE_CLOSE_MS = 5 * 60 * 1000;
 
@@ -55,9 +59,8 @@ class BotService {
   }
 
   buildServerChoices(servers) {
-    return (servers || []).map((server, index) => ({
+    return (servers || []).map((server) => ({
       buttonId: `server:${server.serverId}`,
-      optionId: String(index + 1),
       title: this.normalizeServerButtonTitle(server.servidor),
       serverId: String(server.serverId),
       serverName: String(server.servidor || '').trim(),
@@ -67,13 +70,7 @@ class BotService {
 
   resolveServerSelection(serverChoices, input) {
     if (!Array.isArray(serverChoices) || !input) return null;
-    const normalizedInput = String(input || '').trim().toLowerCase();
-    return (
-      serverChoices.find((choice) => choice.buttonId === input) ||
-      serverChoices.find((choice) => choice.optionId === normalizedInput) ||
-      serverChoices.find((choice) => choice.serverName.trim().toLowerCase() === normalizedInput) ||
-      null
-    );
+    return serverChoices.find((choice) => choice.buttonId === String(input).trim()) || null;
   }
 
   buildServerPrompt(serverChoices, isFirstPrompt = false) {
@@ -81,8 +78,8 @@ class BotService {
       ? 'Excelente! 🚀 Agora selecione o *Servidor* vinculado à sua credencial:'
       : 'Selecione um servidor 👇';
 
-    const lines = serverChoices.map((choice) =>
-      `${choice.optionId}. *${choice.serverName}* - ${this.formatMoney(choice.unitPrice)} por crédito`
+    const lines = serverChoices.map((choice, index) =>
+      `${index + 1}. *${choice.serverName}* - ${this.formatMoney(choice.unitPrice)} por crédito`
     );
 
     return [
@@ -90,9 +87,27 @@ class BotService {
       '',
       ...lines,
       '',
-      'Responda com o *número* ou com o *nome do servidor*.',
+      'Abra a lista interativa e toque no servidor desejado.',
       'Se quiser, use o botão *Encerrar*.'
     ].join('\n');
+  }
+
+  isServerNavigation(input) {
+    return String(input || '').startsWith(SERVER_NEXT_PREFIX) || String(input || '').startsWith(SERVER_PREV_PREFIX);
+  }
+
+  resolveServerPage(input, currentPage = 0) {
+    const value = String(input || '');
+
+    if (value.startsWith(SERVER_NEXT_PREFIX)) {
+      return Number.parseInt(value.slice(SERVER_NEXT_PREFIX.length), 10);
+    }
+
+    if (value.startsWith(SERVER_PREV_PREFIX)) {
+      return Number.parseInt(value.slice(SERVER_PREV_PREFIX.length), 10);
+    }
+
+    return currentPage;
   }
 
   withEndConversationButton(buttons) {
@@ -101,41 +116,51 @@ class BotService {
     return [...buttons, { id: END_CONVERSATION_ID, title: END_CONVERSATION_TITLE }];
   }
 
-  async sendServerList(sendList, serverChoices, isFirstPrompt = false) {
-    const currentRows = serverChoices.map((choice) => ({
+  async sendServerList(sendList, serverChoices, isFirstPrompt = false, page = 0) {
+    const totalPages = Math.max(1, Math.ceil(serverChoices.length / SERVER_LIST_PAGE_SIZE));
+    const safePage = Math.min(Math.max(Number(page) || 0, 0), totalPages - 1);
+    const start = safePage * SERVER_LIST_PAGE_SIZE;
+    const visibleChoices = serverChoices.slice(start, start + SERVER_LIST_PAGE_SIZE);
+
+    const rows = visibleChoices.map((choice) => ({
       id: choice.buttonId,
       title: choice.title,
-      description: choice.serverName
+      description: `${choice.serverName} • ${this.formatMoney(choice.unitPrice)} por crédito`
     }));
 
-    currentRows.push({
+    if (safePage > 0) {
+      rows.push({
+        id: `${SERVER_PREV_PREFIX}${safePage - 1}`,
+        title: '⬅️ Voltar',
+        description: 'Mostra os servidores anteriores'
+      });
+    }
+
+    if (safePage < totalPages - 1) {
+      rows.push({
+        id: `${SERVER_NEXT_PREFIX}${safePage + 1}`,
+        title: '➡️ Próximos',
+        description: 'Mostra mais servidores'
+      });
+    }
+
+    rows.push({
       id: END_CONVERSATION_ID,
       title: END_CONVERSATION_TITLE,
       description: 'Finaliza o atendimento'
     });
 
-    const title = isFirstPrompt
+    const baseTitle = isFirstPrompt
       ? 'Excelente! 🚀 Agora selecione o *Servidor* vinculado à sua credencial:'
       : 'Selecione um servidor 👇';
 
-    await sendList(
-      title,
-      'Ver servidores',
-      currentRows.map((row) => {
-        if (!row.id.startsWith('server:')) return row;
-        const choice = serverChoices.find((item) => item.buttonId === row.id);
-        if (!choice) return row;
-        return {
-          ...row,
-          description: `${choice.serverName} • ${this.formatMoney(choice.unitPrice)} por crédito`
-        };
-      })
-    );
+    const title = totalPages > 1 ? `${baseTitle}\n\nPágina ${safePage + 1} de ${totalPages}` : baseTitle;
 
-    return 0;
+    await sendList(title, 'Ver servidores', rows);
+    return safePage;
   }
 
-  async sendServerPicker(sendList, sendButtons, sendText, serverChoices, isFirstPrompt = false) {
+  async sendServerPicker(sendList, sendButtons, sendText, serverChoices, isFirstPrompt = false, page = 0) {
     const title = isFirstPrompt
       ? 'Excelente! 🚀 Agora selecione o *Servidor* vinculado à sua credencial:'
       : 'Selecione um servidor 👇';
@@ -151,12 +176,12 @@ class BotService {
     }
 
     try {
-      return await this.sendServerList(sendList, serverChoices, isFirstPrompt);
+      return await this.sendServerList(sendList, serverChoices, isFirstPrompt, page);
     } catch (error) {
       console.error('Falha ao enviar lista de servidores; usando fallback em texto:', error);
       await sendText(this.buildServerPrompt(serverChoices, isFirstPrompt));
-      await sendButtons('Quando decidir, escolha *Encerrar* ou responda com o número/nome do servidor.', []);
-      return 0;
+      await sendButtons('Toque em *Encerrar* ou tente novamente em instantes.', []);
+      return Math.max(Number(page) || 0, 0);
     }
   }
 
@@ -218,8 +243,7 @@ class BotService {
       case STAGES.ASK_PANEL:
         if (text === '1') {
           await sendButtons(
-            'Perfeito! ✅\n\nEnvie o *nome + os 4 últimos dígitos da credencial na mesma mensagem*.\n\n*Formato correto:*\n`joao 1265`\n`maria silva 4321`'
-            ,
+            'Perfeito! ✅\n\nEnvie o *nome + os 4 últimos dígitos da credencial na mesma mensagem*.\n\n*Formato correto:*\n`joao 1265`\n`maria silva 4321`',
             []
           );
           session.stage = STAGES.ASK_CREDENTIAL_COMBINED;
@@ -278,7 +302,7 @@ class BotService {
           session.credential = resolved.credential;
           session.credentialName = parsedCredential.name;
           session.serverChoices = serverChoices;
-          session.serverPage = await this.sendServerPicker(sendList, sendButtons, sendText, serverChoices, true);
+          session.serverPage = await this.sendServerPicker(sendList, sendButtons, sendText, serverChoices, true, 0);
           session.stage = STAGES.ASK_SERVER;
           break;
         } catch (error) {
@@ -311,6 +335,19 @@ class BotService {
       }
 
       case STAGES.ASK_SERVER: {
+        if (this.isServerNavigation(text)) {
+          const nextPage = this.resolveServerPage(text, session.serverPage || 0);
+          session.serverPage = await this.sendServerPicker(
+            sendList,
+            sendButtons,
+            sendText,
+            session.serverChoices,
+            false,
+            nextPage
+          );
+          break;
+        }
+
         const selectedServer = this.resolveServerSelection(session.serverChoices, text);
 
         if (selectedServer) {
@@ -325,7 +362,14 @@ class BotService {
 
         if (Array.isArray(session.serverChoices) && session.serverChoices.length > 0) {
           await sendText('Ops! Escolha uma opção na lista de servidores.');
-          session.serverPage = await this.sendServerPicker(sendList, sendButtons, sendText, session.serverChoices, false);
+          session.serverPage = await this.sendServerPicker(
+            sendList,
+            sendButtons,
+            sendText,
+            session.serverChoices,
+            false,
+            session.serverPage || 0
+          );
           break;
         }
 
@@ -404,7 +448,9 @@ class BotService {
             });
 
             await sendText(`🧾 Solicitação de recarga: *${session.rechargeRequestId}*`);
-            await sendText(`Você pode pagar usando a *Chave Pix* abaixo:\n\n🔑 \`${pixKey}\``);
+            await sendButtons(`Você pode pagar usando a *Chave Pix* abaixo:\n\n🔑 \`${pixKey}\``, [
+              { id: PIX_COPY_KEY_ID, title: '📋 Copiar chave Pix' }
+            ]);
             await sendText('Agora envie o *comprovante do Pix* em imagem ou PDF para seguirmos com a validação. 📎');
             session.stage = STAGES.AWAIT_PAYMENT_PROOF;
             break;
@@ -427,6 +473,14 @@ class BotService {
         break;
 
       case STAGES.AWAIT_PAYMENT_PROOF:
+        if (text === PIX_COPY_KEY_ID) {
+          const { pix_key: pixKey } = integrationsService.getBotConfig();
+          await sendButtons(`Aqui está a *Chave Pix* novamente:\n\n🔑 \`${pixKey}\``, [
+            { id: PIX_COPY_KEY_ID, title: '📋 Copiar chave Pix' }
+          ]);
+          break;
+        }
+
         if (session.rechargeRequestId && media && ['image', 'document'].includes(messageType)) {
           try {
             await paymentProofsService.createFromBotMessage({

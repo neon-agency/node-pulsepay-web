@@ -1,5 +1,11 @@
 const db = require('../database/knex');
 
+function clamp(value, maxLength) {
+  if (value === null || value === undefined) return null;
+  const text = String(value);
+  return text.length > maxLength ? text.slice(0, maxLength) : text;
+}
+
 class RechargeRequestPaymentProofsRepository {
   mapRow(row) {
     if (!row) return null;
@@ -34,14 +40,14 @@ class RechargeRequestPaymentProofsRepository {
       .insert({
         id: payload.id,
         recharge_request_id: payload.rechargeRequestId,
-        sender_phone: payload.senderPhone,
-        meta_message_id: payload.metaMessageId || null,
-        meta_media_id: payload.metaMediaId || null,
-        mime_type: payload.mimeType || null,
-        file_name: payload.fileName || null,
+        sender_phone: clamp(payload.senderPhone, 32),
+        meta_message_id: clamp(payload.metaMessageId, 160),
+        meta_media_id: clamp(payload.metaMediaId, 160),
+        mime_type: clamp(payload.mimeType, 120),
+        file_name: clamp(payload.fileName, 255),
         caption: payload.caption || null,
         review_status: payload.reviewStatus || 'pending_review',
-        analysis_provider: payload.analysisProvider || null,
+        analysis_provider: clamp(payload.analysisProvider, 80),
         analysis_summary: payload.analysisSummary || null,
         analysis_confidence: payload.analysisConfidence ?? null,
         extracted_amount: payload.extractedAmount ?? null,
@@ -62,7 +68,7 @@ class RechargeRequestPaymentProofsRepository {
       .where({ id })
       .update({
         review_status: payload.reviewStatus,
-        analysis_provider: payload.analysisProvider || null,
+        analysis_provider: clamp(payload.analysisProvider, 80),
         analysis_summary: payload.analysisSummary || null,
         analysis_confidence: payload.analysisConfidence ?? null,
         extracted_amount: payload.extractedAmount ?? null,

@@ -91,16 +91,21 @@ class PaymentProofsService {
       };
     }
 
-    const updatedProof = await paymentProofsRepository.updateAnalysis(proof.id, {
-      reviewStatus: 'pending_review',
-      analysisProvider: analysis.provider,
-      analysisSummary: analysis.summary,
-      analysisConfidence: analysis.confidence,
-      extractedAmount: analysis.extractedAmount,
-      matchesExpectedAmount: analysis.matchesExpectedAmount,
-      matchesPixIdentifier: analysis.matchesPixIdentifier,
-      rawAnalysisJson: JSON.stringify(analysis.raw || {})
-    });
+    let updatedProof = proof;
+    try {
+      updatedProof = await paymentProofsRepository.updateAnalysis(proof.id, {
+        reviewStatus: 'pending_review',
+        analysisProvider: analysis.provider,
+        analysisSummary: analysis.summary,
+        analysisConfidence: analysis.confidence,
+        extractedAmount: analysis.extractedAmount,
+        matchesExpectedAmount: analysis.matchesExpectedAmount,
+        matchesPixIdentifier: analysis.matchesPixIdentifier,
+        rawAnalysisJson: JSON.stringify(analysis.raw || {})
+      });
+    } catch (error) {
+      console.error('Falha ao salvar analise do comprovante; mantendo revisao manual:', error);
+    }
 
     try {
       await paymentProofNotificationsService.notifyPendingReview({
