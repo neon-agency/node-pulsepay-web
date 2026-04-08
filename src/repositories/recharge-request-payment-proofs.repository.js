@@ -36,48 +36,79 @@ class RechargeRequestPaymentProofsRepository {
   }
 
   async create(payload) {
-    const [row] = await db('recharge_request_payment_proofs')
-      .insert({
-        id: payload.id,
-        recharge_request_id: payload.rechargeRequestId,
-        sender_phone: clamp(payload.senderPhone, 32),
-        meta_message_id: clamp(payload.metaMessageId, 160),
-        meta_media_id: clamp(payload.metaMediaId, 160),
-        mime_type: clamp(payload.mimeType, 120),
-        file_name: clamp(payload.fileName, 255),
-        caption: payload.caption || null,
-        review_status: payload.reviewStatus || 'pending_review',
-        analysis_provider: clamp(payload.analysisProvider, 80),
-        analysis_summary: payload.analysisSummary || null,
-        analysis_confidence: payload.analysisConfidence ?? null,
-        extracted_amount: payload.extractedAmount ?? null,
-        matches_expected_amount: payload.matchesExpectedAmount ?? null,
-        matches_pix_identifier: payload.matchesPixIdentifier ?? null,
-        raw_analysis_json: payload.rawAnalysisJson || null,
-        reviewed_by_user_id: payload.reviewedByUserId || null,
-        reviewer_notes: payload.reviewerNotes || null,
-        reviewed_at: payload.reviewedAt || null
-      })
-      .returning('*');
+    const baseInsert = {
+      id: payload.id,
+      recharge_request_id: payload.rechargeRequestId,
+      sender_phone: clamp(payload.senderPhone, 32),
+      meta_message_id: clamp(payload.metaMessageId, 160),
+      meta_media_id: clamp(payload.metaMediaId, 160),
+      mime_type: clamp(payload.mimeType, 120),
+      file_name: clamp(payload.fileName, 255),
+      caption: payload.caption || null,
+      review_status: payload.reviewStatus || 'pending_review',
+      analysis_provider: clamp(payload.analysisProvider, 80),
+      analysis_summary: payload.analysisSummary || null,
+      analysis_confidence: payload.analysisConfidence ?? null,
+      extracted_amount: payload.extractedAmount ?? null,
+      matches_expected_amount: payload.matchesExpectedAmount ?? null,
+      matches_pix_identifier: payload.matchesPixIdentifier ?? null,
+      raw_analysis_json: payload.rawAnalysisJson || null,
+      reviewed_by_user_id: payload.reviewedByUserId || null,
+      reviewer_notes: payload.reviewerNotes || null,
+      reviewed_at: payload.reviewedAt || null
+    };
+
+    let row;
+    try {
+      [row] = await db('recharge_request_payment_proofs')
+        .insert(baseInsert)
+        .returning('*');
+    } catch (error) {
+      console.error('Falha ao criar comprovante; tentando versao reduzida:', error);
+      [row] = await db('recharge_request_payment_proofs')
+        .insert({
+          ...baseInsert,
+          caption: null,
+          analysis_summary: null,
+          raw_analysis_json: null,
+          reviewer_notes: null
+        })
+        .returning('*');
+    }
 
     return this.mapRow(row);
   }
 
   async updateAnalysis(id, payload) {
-    const [row] = await db('recharge_request_payment_proofs')
-      .where({ id })
-      .update({
-        review_status: payload.reviewStatus,
-        analysis_provider: clamp(payload.analysisProvider, 80),
-        analysis_summary: payload.analysisSummary || null,
-        analysis_confidence: payload.analysisConfidence ?? null,
-        extracted_amount: payload.extractedAmount ?? null,
-        matches_expected_amount: payload.matchesExpectedAmount ?? null,
-        matches_pix_identifier: payload.matchesPixIdentifier ?? null,
-        raw_analysis_json: payload.rawAnalysisJson || null,
-        updated_at: db.fn.now()
-      })
-      .returning('*');
+    const baseUpdate = {
+      review_status: payload.reviewStatus,
+      analysis_provider: clamp(payload.analysisProvider, 80),
+      analysis_summary: payload.analysisSummary || null,
+      analysis_confidence: payload.analysisConfidence ?? null,
+      extracted_amount: payload.extractedAmount ?? null,
+      matches_expected_amount: payload.matchesExpectedAmount ?? null,
+      matches_pix_identifier: payload.matchesPixIdentifier ?? null,
+      raw_analysis_json: payload.rawAnalysisJson || null,
+      updated_at: db.fn.now()
+    };
+
+    let row;
+    try {
+      [row] = await db('recharge_request_payment_proofs')
+        .where({ id })
+        .update(baseUpdate)
+        .returning('*');
+    } catch (error) {
+      console.error('Falha ao atualizar analise do comprovante; tentando versao reduzida:', error);
+      [row] = await db('recharge_request_payment_proofs')
+        .where({ id })
+        .update({
+          ...baseUpdate,
+          analysis_summary: clamp(payload.analysisSummary, 1000),
+          raw_analysis_json: null
+        })
+        .returning('*');
+    }
 
     return this.mapRow(row);
   }

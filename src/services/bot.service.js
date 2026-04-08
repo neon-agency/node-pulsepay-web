@@ -20,7 +20,6 @@ const END_CONVERSATION_TITLE = '🛑 Encerrar';
 const SUMMARY_CONFIRM_ID = 'summary:confirm';
 const SUMMARY_EDIT_QUANTITY_ID = 'summary:edit-quantity';
 const SUMMARY_CANCEL_ID = 'summary:cancel';
-const PIX_COPY_KEY_ID = 'pix:copy-key';
 const SERVER_NEXT_PREFIX = 'server:next:';
 const SERVER_PREV_PREFIX = 'server:prev:';
 const SERVER_LIST_PAGE_SIZE = 8;
@@ -448,9 +447,8 @@ class BotService {
             });
 
             await sendText(`🧾 Solicitação de recarga: *${session.rechargeRequestId}*`);
-            await sendButtons(`Você pode pagar usando a *Chave Pix* abaixo:\n\n🔑 \`${pixKey}\``, [
-              { id: PIX_COPY_KEY_ID, title: '📋 Copiar chave Pix' }
-            ]);
+            await sendText('Você pode pagar usando a *Chave Pix* abaixo:');
+            await sendText(`🔑 \`${pixKey}\``);
             await sendText('Agora envie o *comprovante do Pix* em imagem ou PDF para seguirmos com a validação. 📎');
             session.stage = STAGES.AWAIT_PAYMENT_PROOF;
             break;
@@ -473,14 +471,6 @@ class BotService {
         break;
 
       case STAGES.AWAIT_PAYMENT_PROOF:
-        if (text === PIX_COPY_KEY_ID) {
-          const { pix_key: pixKey } = integrationsService.getBotConfig();
-          await sendButtons(`Aqui está a *Chave Pix* novamente:\n\n🔑 \`${pixKey}\``, [
-            { id: PIX_COPY_KEY_ID, title: '📋 Copiar chave Pix' }
-          ]);
-          break;
-        }
-
         if (session.rechargeRequestId && media && ['image', 'document'].includes(messageType)) {
           try {
             await paymentProofsService.createFromBotMessage({
