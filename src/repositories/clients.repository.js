@@ -25,7 +25,9 @@ class ClientsRepository {
   }
 
   async findById(id) {
-    const row = await db('clients').where({ id }).first();
+    const trimmed = String(id ?? '').trim();
+    if (!trimmed) return null;
+    const row = await db('clients').whereRaw('LOWER(id) = ?', [trimmed.toLowerCase()]).first();
     return this.mapRow(row);
   }
 

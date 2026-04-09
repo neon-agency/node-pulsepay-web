@@ -100,16 +100,16 @@ class ClientsService {
     const data = await normalizePayload(payload, current);
 
     const duplicated = await clientsRepository.findByEmail(data.email);
-    if (duplicated && duplicated.id !== id) {
+    if (duplicated && duplicated.id !== current.id) {
       throw new AppError('Já existe cliente com esse email', 409);
     }
 
-    return clientsRepository.update(id, data);
+    return clientsRepository.update(current.id, data);
   }
 
   async remove(id) {
-    await this.getById(id);
-    await clientsRepository.remove(id);
+    const client = await this.getById(id);
+    await clientsRepository.remove(client.id);
   }
 }
 
