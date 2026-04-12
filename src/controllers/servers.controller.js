@@ -23,7 +23,7 @@ class ServersController {
 
   async remove(req, res) {
     await serversService.remove(req.params.id);
-    return res.status(204).send();
+    return res.status(200).json({ success: true });
   }
 }
 
