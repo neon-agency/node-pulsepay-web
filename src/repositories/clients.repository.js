@@ -66,7 +66,24 @@ class ClientsRepository {
   }
 
   async remove(id) {
-    const deleted = await db('clients').where({ id }).del();
+    const deleted = await db.transaction(async (trx) => {
+      const credentialIds = await trx('credentials')
+        .where({ client_id: id })
+        .pluck('id');
+
+      if (credentialIds.length > 0) {
+        await trx('recharge_requests')
+          .whereIn('credential_id', credentialIds)
+          .del();
+
+        await trx('credentials')
+          .where({ client_id: id })
+          .del();
+      }
+
+      return trx('clients').where({ id }).del();
+    });
+
     return deleted > 0;
   }
 }
