@@ -49,7 +49,7 @@ class BotService {
 
   parseCredentialInput(value) {
     const normalized = String(value || '').trim().replace(/\s+/g, ' ');
-    const match = normalized.match(/^(.*?)[\s\-_/.,:;]+(\d{4})$/);
+    const match = normalized.match(/^(.*?)[\s\-_/.,:;]*(\d{4})$/);
     if (!match) {
       return null;
     }
@@ -254,7 +254,7 @@ class BotService {
       case STAGES.ASK_PANEL:
         if (text === '1') {
           await sendButtons(
-            'Perfeito! ✅\n\nEnvie o *nome + os 4 últimos dígitos da credencial na mesma mensagem*.\n\n*Formato correto:*\n`joao 1265`\n`maria silva 4321`',
+            'Perfeito! ✅\n\nEnvie o *nome + os 4 últimos dígitos da credencial na mesma mensagem*.\n\n*Formato correto (com ou sem espaço):*\n`joao 1265`\n`joao1265`\n`maria silva 4321`',
             []
           );
           session.stage = STAGES.ASK_CREDENTIAL_COMBINED;
@@ -291,7 +291,7 @@ class BotService {
         const parsedCredential = this.parseCredentialInput(text);
         if (!parsedCredential) {
           await sendButtons(
-            'Não consegui entender. Envie *nome + 4 dígitos* na mesma mensagem.\n\n*Exemplo:*\n`joao 1265`',
+            'Não consegui entender. Envie *nome + 4 dígitos* na mesma mensagem.\n\n*Exemplos:*\n`joao 1265`\n`joao1265`',
             []
           );
           break;
@@ -320,7 +320,7 @@ class BotService {
           console.error('Erro ao resolver credencial no bot:', error);
           if (error?.statusCode === 404) {
             await sendButtons(
-              '❌ Não encontrei uma credencial com esse *nome + 4 dígitos*.\n\nConfira se o nome está igual ao cadastro e tente novamente.\n*Exemplo:* `joao 1265`',
+              '❌ Não encontrei uma credencial com esse *nome + 4 dígitos*.\n\nConfira se o nome está igual ao cadastro e tente novamente.\n*Exemplos:* `joao 1265` ou `joao1265`',
               []
             );
             session.stage = STAGES.ASK_CREDENTIAL_COMBINED;
@@ -329,7 +329,7 @@ class BotService {
 
           if (error?.statusCode === 409) {
             await sendButtons(
-              `⚠️ ${error.message}\n\nSe precisar, envie novamente no formato:\n*Exemplo:* \`joao 1265\``,
+              `⚠️ ${error.message}\n\nSe precisar, envie novamente no formato:\n*Exemplos:* \`joao 1265\` ou \`joao1265\``,
               []
             );
             session.stage = STAGES.ASK_CREDENTIAL_COMBINED;
