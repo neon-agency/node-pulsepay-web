@@ -6,6 +6,7 @@ class ClientModel {
     nome,
     email,
     telefone,
+    tipo,
     servidor,
     plano,
     status,
@@ -16,6 +17,7 @@ class ClientModel {
     this.nome = nome;
     this.email = email;
     this.telefone = telefone;
+    this.tipo = tipo;
     this.servidor = servidor;
     this.plano = plano;
     this.status = status;

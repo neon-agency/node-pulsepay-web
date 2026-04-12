@@ -60,20 +60,14 @@ class CredentialsService {
       throw new AppError('Cada vínculo precisa de "serverId"', 400);
     }
 
-    const email = payload?.email === undefined || payload?.email === null
-      ? ''
-      : String(payload.email).trim();
-    const login = payload?.login === undefined || payload?.login === null
-      ? ''
-      : String(payload.login).trim();
-
-    if (!email) {
-      throw new AppError('Cada vínculo precisa de "email"', 400);
-    }
-
-    if (!login) {
-      throw new AppError('Cada vínculo precisa de "login"', 400);
-    }
+    const emailRaw = payload?.email;
+    const loginRaw = payload?.login;
+    const email = emailRaw === undefined || emailRaw === null || String(emailRaw).trim() === ''
+      ? null
+      : String(emailRaw).trim();
+    const login = loginRaw === undefined || loginRaw === null || String(loginRaw).trim() === ''
+      ? null
+      : String(loginRaw).trim();
 
     return {
       serverId,

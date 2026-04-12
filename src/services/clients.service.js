@@ -32,12 +32,23 @@ function calculateStatusVencimento(vencimento) {
   return 'ok';
 }
 
+function normalizeTipo(tipoValue) {
+  const tipo = String(tipoValue || '').trim().toLowerCase();
+
+  if (!tipo) return '';
+  if (tipo === 'servidor') return 'revenda';
+
+  return tipo;
+}
+
 async function normalizePayload(payload, current = null) {
   const nome = payload?.nome !== undefined ? String(payload.nome).trim() : current?.nome;
   const email = payload?.email !== undefined ? String(payload.email).trim().toLowerCase() : current?.email;
   const telefoneRaw =
     payload?.telefone !== undefined ? payload.telefone : current?.telefone;
   const telefone = sanitizeTelefone(telefoneRaw);
+  const tipoRaw = payload?.tipo !== undefined ? payload.tipo : current?.tipo;
+  const tipo = normalizeTipo(tipoRaw);
   const servidor = payload?.servidor !== undefined ? String(payload.servidor).trim() : current?.servidor;
   const plano = payload?.plano !== undefined ? String(payload.plano).trim() : current?.plano;
   const status = payload?.status !== undefined ? String(payload.status).trim().toLowerCase() : current?.status;
@@ -48,6 +59,7 @@ async function normalizePayload(payload, current = null) {
   if (!isValidTelefone(telefone)) {
     throw new AppError('Campo "telefone" é obrigatório (mín. 10 dígitos)', 400);
   }
+  if (!tipo) throw new AppError('Campo "tipo" é obrigatório', 400);
   if (!servidor) throw new AppError('Campo "servidor" é obrigatório', 400);
   if (!plano) throw new AppError('Campo "plano" é obrigatório', 400);
   if (!status) throw new AppError('Campo "status" é obrigatório', 400);
@@ -63,15 +75,30 @@ async function normalizePayload(payload, current = null) {
     throw new AppError('Campo "status" deve ser: ativo, inativo ou suspenso', 400);
   }
 
+  const allowedTipos = ['cliente', 'revenda'];
+  if (!allowedTipos.includes(tipo)) {
+    throw new AppError('Campo "tipo" deve ser: cliente ou revenda', 400);
+  }
+
   const vencimento = toDateOnlyString(vencimentoRaw);
   const statusVencimento = calculateStatusVencimento(vencimento);
 
-  return { nome, email, telefone, servidor, plano, status, vencimento, statusVencimento };
+  return { nome, email, telefone, tipo, servidor, plano, status, vencimento, statusVencimento };
 }
 
 class ClientsService {
-  async list() {
-    return clientsRepository.findAll();
+  async list(query = {}) {
+    const tipo = normalizeTipo(query?.tipo);
+    if (!tipo) {
+      return clientsRepository.findAll();
+    }
+
+    const allowedTipos = ['cliente', 'revenda'];
+    if (!allowedTipos.includes(tipo)) {
+      throw new AppError('Query "tipo" deve ser: cliente ou revenda', 400);
+    }
+
+    return clientsRepository.findAll({ tipo });
   }
 
   async getById(id) {

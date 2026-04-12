@@ -1,8 +1,8 @@
 const clientsService = require('../services/clients.service');
 
 class ClientsController {
-  async list(_req, res) {
-    const data = await clientsService.list();
+  async list(req, res) {
+    const data = await clientsService.list(req.query);
     return res.status(200).json(data);
   }
 

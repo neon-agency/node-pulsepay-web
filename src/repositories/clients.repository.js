@@ -9,6 +9,7 @@ class ClientsRepository {
       nome: row.nome,
       email: row.email,
       telefone: row.telefone,
+      tipo: row.tipo,
       servidor: row.servidor_id,
       plano: row.plano,
       status: row.status,
@@ -19,8 +20,14 @@ class ClientsRepository {
     };
   }
 
-  async findAll() {
-    const rows = await db('clients').select('*').orderBy('created_at', 'desc');
+  async findAll(filters = {}) {
+    const query = db('clients').select('*');
+
+    if (filters.tipo) {
+      query.where({ tipo: filters.tipo });
+    }
+
+    const rows = await query.orderBy('created_at', 'desc');
     return rows.map((row) => this.mapRow(row));
   }
 

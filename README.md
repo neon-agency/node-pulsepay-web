@@ -139,6 +139,7 @@ Todas as rotas de clients são protegidas.
 
 ### Listar clients
 - `GET /api/clients`
+- Opcional: `GET /api/clients?tipo=cliente` ou `GET /api/clients?tipo=revenda`
 
 ```bash
 curl -X GET "https://pulsepay.webutilidades.online/api/clients" \
@@ -161,6 +162,7 @@ Body:
 {
   "nome": "João Silva",
   "email": "joao@email.com",
+  "tipo": "cliente",
   "servidor": "1",
   "plano": "Mensal",
   "status": "ativo",
@@ -172,7 +174,7 @@ Body:
 curl -X POST "https://pulsepay.webutilidades.online/api/clients" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer SEU_TOKEN" \
-  -d '{"nome":"João Silva","email":"joao@email.com","servidor":"1","plano":"Mensal","status":"ativo","vencimento":"2026-04-10"}'
+  -d '{"nome":"João Silva","email":"joao@email.com","tipo":"cliente","servidor":"1","plano":"Mensal","status":"ativo","vencimento":"2026-04-10"}'
 ```
 
 ### Atualizar client
