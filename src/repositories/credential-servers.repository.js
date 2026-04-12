@@ -10,6 +10,8 @@ class CredentialServersRepository {
       serverId: row.server_id,
       priceOverride: row.price_override === null ? null : Number(row.price_override),
       isActive: Boolean(row.is_active),
+      email: row.email ?? null,
+      login: row.login ?? null,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };

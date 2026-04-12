@@ -60,10 +60,27 @@ class CredentialsService {
       throw new AppError('Cada vínculo precisa de "serverId"', 400);
     }
 
+    const email = payload?.email === undefined || payload?.email === null
+      ? ''
+      : String(payload.email).trim();
+    const login = payload?.login === undefined || payload?.login === null
+      ? ''
+      : String(payload.login).trim();
+
+    if (!email) {
+      throw new AppError('Cada vínculo precisa de "email"', 400);
+    }
+
+    if (!login) {
+      throw new AppError('Cada vínculo precisa de "login"', 400);
+    }
+
     return {
       serverId,
       priceOverride: this.parsePrice(payload?.priceOverride),
-      isActive: payload?.isActive !== false
+      isActive: payload?.isActive !== false,
+      email,
+      login
     };
   }
 
@@ -155,7 +172,9 @@ class CredentialsService {
       credentialId,
       serverId: item.serverId,
       priceOverride: item.priceOverride,
-      isActive: item.isActive
+      isActive: item.isActive,
+      email: item.email,
+      login: item.login
     }));
 
     await credentialServersRepository.replaceAll(credentialId, rows);
@@ -204,7 +223,9 @@ class CredentialsService {
         servidor: server.servidor,
         basePrice: server.basePrice,
         priceOverride: linked?.priceOverride ?? null,
-        effectivePrice
+        effectivePrice,
+        email: linked?.email ?? null,
+        login: linked?.login ?? null
       };
     });
 
