@@ -53,8 +53,11 @@ class ServersRepository {
   }
 
   async remove(id) {
-    const deleted = await db('servers').where({ id }).del();
-    return deleted > 0;
+    return db.transaction(async (trx) => {
+      await trx('credential_servers').where({ server_id: id }).del();
+      const deleted = await trx('servers').where({ id }).del();
+      return deleted > 0;
+    });
   }
 }
 
