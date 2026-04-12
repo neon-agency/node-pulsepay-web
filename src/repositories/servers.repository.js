@@ -7,6 +7,7 @@ class ServersRepository {
     return {
       id: row.id,
       servidor: row.servidor,
+      url: row.url,
       basePrice: Number(row.base_price),
       createdAt: row.created_at,
       updatedAt: row.updated_at

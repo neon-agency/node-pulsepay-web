@@ -23,7 +23,7 @@ class ClientsController {
 
   async remove(req, res) {
     await clientsService.remove(req.params.id);
-    return res.status(204).send();
+    return res.status(200).json({ success: true });
   }
 }
 

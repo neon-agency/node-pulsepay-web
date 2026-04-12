@@ -90,7 +90,8 @@ curl -X GET "https://pulsepay.webutilidades.online/api/servers/1"
 Body:
 ```json
 {
-  "servidor": "UNITV"
+  "servidor": "UNITV",
+  "url": "https://painel.unitv.example"
 }
 ```
 
@@ -99,7 +100,7 @@ Exemplo (Bearer):
 curl -X POST "https://pulsepay.webutilidades.online/api/servers" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer SEU_TOKEN" \
-  -d '{"servidor":"UNITV"}'
+  -d '{"servidor":"UNITV","url":"https://painel.unitv.example"}'
 ```
 
 ### Atualizar servidor
@@ -109,7 +110,8 @@ curl -X POST "https://pulsepay.webutilidades.online/api/servers" \
 Body:
 ```json
 {
-  "servidor": "NOVO_NOME"
+  "servidor": "NOVO_NOME",
+  "url": "https://novo-painel.example"
 }
 ```
 
@@ -118,7 +120,7 @@ Exemplo:
 curl -X PUT "https://pulsepay.webutilidades.online/api/servers/1" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer SEU_TOKEN" \
-  -d '{"servidor":"NOVO_NOME"}'
+  -d '{"servidor":"NOVO_NOME","url":"https://novo-painel.example"}'
 ```
 
 ### Deletar servidor
