@@ -24,8 +24,8 @@ class RechargeRequestsService {
     return Number(parsed.toFixed(2));
   }
 
-  async list() {
-    const rows = await rechargeRequestsRepository.findAll();
+  async list({ credentialIds } = {}) {
+    const rows = await rechargeRequestsRepository.findAll({ credentialIds: credentialIds || null });
     return this.enrichWithPaymentProof(rows);
   }
 

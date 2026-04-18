@@ -78,8 +78,8 @@ class CredentialsService {
     };
   }
 
-  async list() {
-    return credentialsRepository.findAll();
+  async list({ clientId } = {}) {
+    return credentialsRepository.findAll({ clientId: clientId || null });
   }
 
   async getById(id) {

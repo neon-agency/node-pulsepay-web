@@ -10,6 +10,7 @@ class UsersRepository {
       email: row.email,
       passwordHash: row.password_hash,
       role: row.role,
+      clientId: row.client_id ?? null,
       whatsappPhone: row.whatsapp_phone,
       isActive: Boolean(row.is_active),
       createdAt: row.created_at,
@@ -39,6 +40,16 @@ class UsersRepository {
     return rows.map((row) => this.mapRow(row));
   }
 
+  async findByClientId(clientId) {
+    const row = await db('users').where({ client_id: clientId }).first();
+    return this.mapRow(row);
+  }
+
+  async findAll() {
+    const rows = await db('users').orderBy('created_at', 'asc');
+    return rows.map((row) => this.mapRow(row));
+  }
+
   async create(payload) {
     const [row] = await db('users')
       .insert({
@@ -47,6 +58,7 @@ class UsersRepository {
         email: payload.email,
         password_hash: payload.passwordHash,
         role: payload.role,
+        client_id: payload.clientId || null,
         whatsapp_phone: payload.whatsappPhone || null,
         is_active: payload.isActive ?? true
       })

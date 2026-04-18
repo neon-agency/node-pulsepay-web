@@ -18,8 +18,8 @@ class CredentialsRepository {
     };
   }
 
-  async findAll() {
-    const rows = await db('credentials as c')
+  async findAll({ clientId } = {}) {
+    let query = db('credentials as c')
       .leftJoin('clients as cl', 'c.client_id', 'cl.id')
       .select(
         'c.id',
@@ -34,6 +34,12 @@ class CredentialsRepository {
         'cl.telefone as client_telefone'
       )
       .orderBy('c.created_at', 'desc');
+
+    if (clientId) {
+      query = query.where('c.client_id', clientId);
+    }
+
+    const rows = await query;
     return rows.map((row) => this.mapRow(row));
   }
 

@@ -167,6 +167,7 @@ class AuthService {
       email: user.email,
       name: user.name,
       role: user.role,
+      clientId: user.clientId || null,
       whatsappPhone: user.whatsappPhone,
       exp
     });
@@ -180,6 +181,7 @@ class AuthService {
         name: user.name,
         email: user.email,
         role: user.role,
+        clientId: user.clientId || null,
         whatsappPhone: user.whatsappPhone
       }
     };
@@ -200,6 +202,7 @@ class AuthService {
       email: payload.email,
       name: payload.name || '',
       role: payload.role || 'admin',
+      clientId: payload.clientId || null,
       whatsappPhone: payload.whatsappPhone || null,
       expiresAt: new Date(payload.exp).toISOString()
     };

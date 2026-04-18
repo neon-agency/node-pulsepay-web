@@ -36,8 +36,8 @@ class RechargeRequestsRepository {
     };
   }
 
-  async findAll() {
-    const rows = await db('recharge_requests as rr')
+  async findAll({ credentialIds } = {}) {
+    let query = db('recharge_requests as rr')
       .innerJoin('credentials as c', 'c.id', 'rr.credential_id')
       .innerJoin('servers as s', 's.id', 'rr.server_id')
       .leftJoin('users as u', 'u.id', 'rr.created_by_user_id')
@@ -51,6 +51,11 @@ class RechargeRequestsRepository {
       )
       .orderBy('rr.created_at', 'desc');
 
+    if (Array.isArray(credentialIds) && credentialIds.length > 0) {
+      query = query.whereIn('rr.credential_id', credentialIds);
+    }
+
+    const rows = await query;
     return rows.map((row) => this.mapRowWithRelations(row));
   }
 
