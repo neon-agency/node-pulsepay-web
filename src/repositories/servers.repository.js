@@ -1,6 +1,17 @@
 const db = require('../database/knex');
 
 class ServersRepository {
+  normalizePriceTiers(value) {
+    const raw = Array.isArray(value) ? value : [];
+    return raw
+      .map((tier) => ({
+        quantity: Number(tier?.quantity ?? 0),
+        unitPrice: Number(tier?.unitPrice ?? tier?.unit_price ?? 0)
+      }))
+      .filter((tier) => Number.isFinite(tier.quantity) && tier.quantity > 0 && Number.isFinite(tier.unitPrice) && tier.unitPrice > 0)
+      .sort((a, b) => a.quantity - b.quantity);
+  }
+
   mapRow(row) {
     if (!row) return null;
 
@@ -9,6 +20,7 @@ class ServersRepository {
       servidor: row.servidor,
       url: row.url,
       basePrice: Number(row.base_price),
+      priceTiers: this.normalizePriceTiers(row.price_tiers),
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -27,10 +39,12 @@ class ServersRepository {
   async create(server) {
     const payload = {
       ...server,
-      base_price: server.basePrice
+      base_price: server.basePrice,
+      price_tiers: JSON.stringify(server.priceTiers || [])
     };
 
     delete payload.basePrice;
+    delete payload.priceTiers;
     const [row] = await db('servers').insert(payload).returning('*');
     return this.mapRow(row);
   }
@@ -39,10 +53,12 @@ class ServersRepository {
     const payload = {
       ...updates,
       base_price: updates.basePrice,
+      price_tiers: JSON.stringify(updates.priceTiers || []),
       updated_at: db.fn.now()
     };
 
     delete payload.basePrice;
+    delete payload.priceTiers;
 
     const [row] = await db('servers')
       .where({ id })

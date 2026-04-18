@@ -3,6 +3,37 @@ const ServerModel = require('../models/server.model');
 const serversRepository = require('../repositories/servers.repository');
 
 class ServersService {
+  parsePriceTiers(value, fallback = []) {
+    if (value === undefined || value === null) {
+      return Array.isArray(fallback) ? fallback : [];
+    }
+
+    if (!Array.isArray(value) || value.length === 0) {
+      throw new AppError('Campo "priceTiers" deve ser uma lista com ao menos um item', 400);
+    }
+
+    const normalized = value
+      .map((tier) => ({
+        quantity: Number(tier?.quantity),
+        unitPrice: Number(tier?.unitPrice ?? tier?.unit_price)
+      }))
+      .map((tier) => ({
+        quantity: Number.isFinite(tier.quantity) ? Math.trunc(tier.quantity) : NaN,
+        unitPrice: Number.isFinite(tier.unitPrice) ? Number(tier.unitPrice.toFixed(2)) : NaN
+      }));
+
+    if (normalized.some((tier) => !Number.isFinite(tier.quantity) || tier.quantity <= 0 || !Number.isFinite(tier.unitPrice) || tier.unitPrice <= 0)) {
+      throw new AppError('Cada item de "priceTiers" precisa ter quantity e unitPrice maiores que zero', 400);
+    }
+
+    const uniqueQuantities = new Set(normalized.map((tier) => tier.quantity));
+    if (uniqueQuantities.size !== normalized.length) {
+      throw new AppError('Campo "priceTiers" não pode repetir quantity', 400);
+    }
+
+    return normalized.sort((a, b) => a.quantity - b.quantity);
+  }
+
   parseBasePrice(value, fallback = null) {
     if (value === undefined || value === null || value === '') return fallback;
 
@@ -52,7 +83,8 @@ class ServersService {
   async create(payload) {
     const servidor = String(payload?.servidor || '').trim();
     const url = this.parseUrl(payload?.url);
-    const basePrice = this.parseBasePrice(payload?.basePrice, 10);
+    const priceTiers = this.parsePriceTiers(payload?.priceTiers, []);
+    const basePrice = this.parseBasePrice(payload?.basePrice, priceTiers[0]?.unitPrice ?? 10);
 
     if (!servidor) {
       throw new AppError('Campo "servidor" é obrigatório', 400);
@@ -62,7 +94,7 @@ class ServersService {
       throw new AppError('Campo "url" é obrigatório', 400);
     }
 
-    const item = new ServerModel({ servidor, url, basePrice });
+    const item = new ServerModel({ servidor, url, basePrice, priceTiers });
     return serversRepository.create(item);
   }
 
@@ -72,9 +104,12 @@ class ServersService {
     const url = payload?.url !== undefined
       ? this.parseUrl(payload.url)
       : this.parseUrl(current.url, null);
+    const priceTiers = payload?.priceTiers !== undefined
+      ? this.parsePriceTiers(payload.priceTiers, current.priceTiers)
+      : current.priceTiers;
     const basePrice = payload?.basePrice !== undefined
-      ? this.parseBasePrice(payload.basePrice)
-      : current.basePrice;
+      ? this.parseBasePrice(payload.basePrice, priceTiers[0]?.unitPrice ?? current.basePrice)
+      : (priceTiers[0]?.unitPrice ?? current.basePrice);
 
     if (!servidor) {
       throw new AppError('Campo "servidor" não pode ser vazio', 400);
@@ -84,7 +119,7 @@ class ServersService {
       throw new AppError('Campo "url" é obrigatório', 400);
     }
 
-    return serversRepository.update(id, { servidor, url, basePrice });
+    return serversRepository.update(id, { servidor, url, basePrice, priceTiers });
   }
 
   async remove(id) {
