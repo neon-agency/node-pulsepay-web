@@ -125,6 +125,14 @@ class RechargeRequestsController {
     res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
     return res.status(200).send(file.buffer);
   }
+
+  async archive(req, res) {
+    if (req.user?.type !== 'internal' && req.user?.role !== 'admin') {
+      throw new AppError('Acesso negado', 403);
+    }
+    const data = await rechargeRequestsService.archive(req.params.id);
+    return res.status(200).json(data);
+  }
 }
 
 module.exports = new RechargeRequestsController();

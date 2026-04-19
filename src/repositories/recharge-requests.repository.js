@@ -18,6 +18,7 @@ class RechargeRequestsRepository {
       pixCode: row.pix_code,
       pixTxid: row.pix_txid,
       requestedByPhone: row.requested_by_phone,
+      archived: Boolean(row.archived),
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -130,6 +131,14 @@ class RechargeRequestsRepository {
       .update(payload)
       .returning('*');
 
+    return this.mapRow(row);
+  }
+
+  async archive(id) {
+    const [row] = await db('recharge_requests')
+      .where({ id })
+      .update({ archived: true, updated_at: db.fn.now() })
+      .returning('*');
     return this.mapRow(row);
   }
 

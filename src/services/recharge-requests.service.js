@@ -173,6 +173,14 @@ class RechargeRequestsService {
 
     return updated;
   }
+
+  async archive(id) {
+    const existing = await rechargeRequestsRepository.findById(id);
+    if (!existing) {
+      throw new AppError('Solicitação não encontrada', 404);
+    }
+    return rechargeRequestsRepository.archive(id);
+  }
 }
 
 module.exports = new RechargeRequestsService();

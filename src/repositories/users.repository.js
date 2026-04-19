@@ -78,6 +78,20 @@ class UsersRepository {
 
     return this.mapRow(row);
   }
+
+  async updateProfile(id, { name, email, passwordHash }) {
+    const updates = { updated_at: db.fn.now() };
+    if (name !== undefined) updates.name = name;
+    if (email !== undefined) updates.email = email;
+    if (passwordHash !== undefined) updates.password_hash = passwordHash;
+
+    const [row] = await db('users')
+      .where({ id })
+      .update(updates)
+      .returning('*');
+
+    return this.mapRow(row);
+  }
 }
 
 module.exports = new UsersRepository();

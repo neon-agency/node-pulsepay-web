@@ -45,6 +45,33 @@ class ServersService {
     return Number(parsed.toFixed(2));
   }
 
+  parseCustoCredito(value, fallback = 0) {
+    if (value === undefined || value === null || value === '') return fallback;
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      throw new AppError('Campo "custoCredito" deve ser um número maior ou igual a zero', 400);
+    }
+    return Number(parsed.toFixed(2));
+  }
+
+  parseEstoque(value, fallback = 0) {
+    if (value === undefined || value === null || value === '') return fallback;
+    const parsed = Math.trunc(Number(value));
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      throw new AppError('Campo "estoque" deve ser um inteiro maior ou igual a zero', 400);
+    }
+    return parsed;
+  }
+
+  parseEstoqueAlerta(value, fallback = null) {
+    if (value === undefined || value === null || value === '') return fallback;
+    const parsed = Math.trunc(Number(value));
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      throw new AppError('Campo "estoqueAlerta" deve ser um inteiro maior ou igual a zero', 400);
+    }
+    return parsed;
+  }
+
   parseUrl(value, fallback = null) {
     if (value === undefined || value === null) return fallback;
 
@@ -94,7 +121,11 @@ class ServersService {
       throw new AppError('Campo "url" é obrigatório', 400);
     }
 
-    const item = new ServerModel({ servidor, url, basePrice, priceTiers });
+    const custoCredito = this.parseCustoCredito(payload?.custoCredito, 0);
+    const estoque = this.parseEstoque(payload?.estoque, 0);
+    const estoqueAlerta = this.parseEstoqueAlerta(payload?.estoqueAlerta, null);
+
+    const item = new ServerModel({ servidor, url, basePrice, priceTiers, custoCredito, estoque, estoqueAlerta });
     return serversRepository.create(item);
   }
 
@@ -119,7 +150,17 @@ class ServersService {
       throw new AppError('Campo "url" é obrigatório', 400);
     }
 
-    return serversRepository.update(id, { servidor, url, basePrice, priceTiers });
+    const custoCredito = payload?.custoCredito !== undefined
+      ? this.parseCustoCredito(payload.custoCredito, current.custoCredito)
+      : current.custoCredito;
+    const estoque = payload?.estoque !== undefined
+      ? this.parseEstoque(payload.estoque, current.estoque)
+      : current.estoque;
+    const estoqueAlerta = payload?.estoqueAlerta !== undefined
+      ? this.parseEstoqueAlerta(payload.estoqueAlerta, current.estoqueAlerta)
+      : current.estoqueAlerta;
+
+    return serversRepository.update(id, { servidor, url, basePrice, priceTiers, custoCredito, estoque, estoqueAlerta });
   }
 
   async remove(id) {

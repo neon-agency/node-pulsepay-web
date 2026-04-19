@@ -50,6 +50,42 @@ class UsersService {
     return this.toPublicUser(user);
   }
 
+  async updateProfile(userId, { name, email, password }) {
+    const user = await usersRepository.findById(userId);
+    if (!user || !user.isActive) {
+      throw new AppError('Usuário não encontrado', 404);
+    }
+
+    const updates = {};
+
+    if (name !== undefined) {
+      const trimmed = String(name).trim();
+      if (!trimmed) throw new AppError('Nome não pode ser vazio', 400);
+      updates.name = trimmed;
+    }
+
+    if (email !== undefined) {
+      const normalized = String(email).trim().toLowerCase();
+      if (!/\S+@\S+\.\S+/.test(normalized)) throw new AppError('Email inválido', 400);
+      const existing = await usersRepository.findByEmail(normalized);
+      if (existing && existing.id !== userId) throw new AppError('Email já em uso', 409);
+      updates.email = normalized;
+    }
+
+    if (password !== undefined) {
+      const pwd = String(password);
+      if (pwd.length < 6) throw new AppError('Senha deve ter ao menos 6 caracteres', 400);
+      updates.passwordHash = hashPassword(pwd);
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return this.toPublicUser(user);
+    }
+
+    const updated = await usersRepository.updateProfile(userId, updates);
+    return this.toPublicUser(updated);
+  }
+
   toPublicUser(user) {
     return {
       id: user.id,

@@ -60,15 +60,8 @@ async function normalizePayload(payload, current = null) {
     throw new AppError('Campo "telefone" é obrigatório (mín. 10 dígitos)', 400);
   }
   if (!tipo) throw new AppError('Campo "tipo" é obrigatório', 400);
-  if (!servidor) throw new AppError('Campo "servidor" é obrigatório', 400);
-  if (!plano) throw new AppError('Campo "plano" é obrigatório', 400);
   if (!status) throw new AppError('Campo "status" é obrigatório', 400);
   if (!vencimentoRaw) throw new AppError('Campo "vencimento" é obrigatório', 400);
-
-  const server = await serversRepository.findById(servidor);
-  if (!server) {
-    throw new AppError('Servidor informado não existe', 400);
-  }
 
   const allowedStatus = ['ativo', 'inativo', 'suspenso'];
   if (!allowedStatus.includes(status)) {
@@ -80,10 +73,37 @@ async function normalizePayload(payload, current = null) {
     throw new AppError('Campo "tipo" deve ser: cliente ou revenda', 400);
   }
 
+  const requiresServer = tipo === 'cliente';
+
+  if (requiresServer && !servidor) {
+    throw new AppError('Campo "servidor" é obrigatório', 400);
+  }
+
+  if (requiresServer && !plano) {
+    throw new AppError('Campo "plano" é obrigatório', 400);
+  }
+
+  if (requiresServer) {
+    const server = await serversRepository.findById(servidor);
+    if (!server) {
+      throw new AppError('Servidor informado não existe', 400);
+    }
+  }
+
   const vencimento = toDateOnlyString(vencimentoRaw);
   const statusVencimento = calculateStatusVencimento(vencimento);
 
-  return { nome, email, telefone, tipo, servidor, plano, status, vencimento, statusVencimento };
+  return {
+    nome,
+    email,
+    telefone,
+    tipo,
+    servidor: requiresServer ? servidor : null,
+    plano: requiresServer ? plano : null,
+    status,
+    vencimento,
+    statusVencimento
+  };
 }
 
 class ClientsService {

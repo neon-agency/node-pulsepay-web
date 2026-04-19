@@ -21,6 +21,9 @@ class ServersRepository {
       url: row.url,
       basePrice: Number(row.base_price),
       priceTiers: this.normalizePriceTiers(row.price_tiers),
+      custoCredito: Number(row.custo_credito ?? 0),
+      estoque: Number(row.estoque ?? 0),
+      estoqueAlerta: row.estoque_alerta != null ? Number(row.estoque_alerta) : null,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -40,11 +43,15 @@ class ServersRepository {
     const payload = {
       ...server,
       base_price: server.basePrice,
-      price_tiers: JSON.stringify(server.priceTiers || [])
+      price_tiers: JSON.stringify(server.priceTiers || []),
+      custo_credito: server.custoCredito ?? 0,
+      estoque_alerta: server.estoqueAlerta ?? null
     };
 
     delete payload.basePrice;
     delete payload.priceTiers;
+    delete payload.custoCredito;
+    delete payload.estoqueAlerta;
     const [row] = await db('servers').insert(payload).returning('*');
     return this.mapRow(row);
   }
@@ -54,11 +61,15 @@ class ServersRepository {
       ...updates,
       base_price: updates.basePrice,
       price_tiers: JSON.stringify(updates.priceTiers || []),
+      custo_credito: updates.custoCredito ?? 0,
+      estoque_alerta: updates.estoqueAlerta ?? null,
       updated_at: db.fn.now()
     };
 
     delete payload.basePrice;
     delete payload.priceTiers;
+    delete payload.custoCredito;
+    delete payload.estoqueAlerta;
 
     const [row] = await db('servers')
       .where({ id })
