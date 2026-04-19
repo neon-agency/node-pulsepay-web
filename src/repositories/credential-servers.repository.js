@@ -1,6 +1,17 @@
 const db = require('../database/knex');
 
 class CredentialServersRepository {
+  normalizePriceTiers(value) {
+    const raw = Array.isArray(value) ? value : [];
+    return raw
+      .map((tier) => ({
+        quantity: Number(tier?.quantity ?? 0),
+        unitPrice: Number(tier?.unitPrice ?? tier?.unit_price ?? 0)
+      }))
+      .filter((tier) => Number.isFinite(tier.quantity) && tier.quantity > 0 && Number.isFinite(tier.unitPrice) && tier.unitPrice > 0)
+      .sort((a, b) => a.quantity - b.quantity);
+  }
+
   mapRow(row) {
     if (!row) return null;
 
@@ -9,6 +20,7 @@ class CredentialServersRepository {
       credentialId: row.credential_id,
       serverId: row.server_id,
       priceOverride: row.price_override === null ? null : Number(row.price_override),
+      priceTiersOverride: this.normalizePriceTiers(row.price_tiers_override),
       isActive: Boolean(row.is_active),
       email: row.email ?? null,
       login: row.login ?? null,
@@ -23,7 +35,8 @@ class CredentialServersRepository {
     return {
       ...this.mapRow(row),
       servidor: row.servidor,
-      basePrice: Number(row.base_price)
+      basePrice: Number(row.base_price),
+      serverPriceTiers: this.normalizePriceTiers(row.server_price_tiers)
     };
   }
 
@@ -37,7 +50,7 @@ class CredentialServersRepository {
   async findByCredentialIdWithServers(credentialId) {
     const rows = await db('credential_servers as cs')
       .innerJoin('servers as s', 's.id', 'cs.server_id')
-      .select('cs.*', 's.servidor', 's.base_price')
+      .select('cs.*', 's.servidor', 's.base_price', 's.price_tiers as server_price_tiers')
       .where({ 'cs.credential_id': credentialId })
       .orderBy('cs.created_at', 'desc');
 
@@ -47,7 +60,7 @@ class CredentialServersRepository {
   async findOneByCredentialAndServer(credentialId, serverId) {
     const row = await db('credential_servers as cs')
       .innerJoin('servers as s', 's.id', 'cs.server_id')
-      .select('cs.*', 's.servidor', 's.base_price')
+      .select('cs.*', 's.servidor', 's.base_price', 's.price_tiers as server_price_tiers')
       .where({
         'cs.credential_id': credentialId,
         'cs.server_id': serverId
@@ -67,6 +80,7 @@ class CredentialServersRepository {
         credential_id: item.credentialId,
         server_id: item.serverId,
         price_override: item.priceOverride,
+        price_tiers_override: JSON.stringify(item.priceTiersOverride || []),
         is_active: item.isActive
       }));
 
@@ -74,6 +88,7 @@ class CredentialServersRepository {
         delete item.credentialId;
         delete item.serverId;
         delete item.priceOverride;
+        delete item.priceTiersOverride;
         delete item.isActive;
       }
 

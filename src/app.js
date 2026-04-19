@@ -12,7 +12,8 @@ const errorHandler = require('./middlewares/error-handler');
 
 const app = express();
 
-app.use(express.json());
+// Upload web chega como JSON + base64, entao o payload HTTP fica maior que o arquivo real.
+app.use(express.json({ limit: '12mb' }));
 
 app.get('/health', (_req, res) => {
   res.status(200).json({ status: 'ok' });

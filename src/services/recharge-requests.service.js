@@ -8,6 +8,30 @@ const paymentProofsRepository = require('../repositories/recharge-request-paymen
 const salesNotificationsService = require('./sales-notifications.service');
 
 class RechargeRequestsService {
+  resolveCatalogUnitPrice(link, quantity) {
+    const sortedServerTiers = [...(link?.serverPriceTiers || [])].sort((a, b) => a.quantity - b.quantity);
+    const overrideByQuantity = new Map(
+      (link?.priceTiersOverride || []).map((tier) => [tier.quantity, tier.unitPrice])
+    );
+
+    const effectiveTiers = sortedServerTiers.map((tier) => ({
+      quantity: tier.quantity,
+      unitPrice: overrideByQuantity.get(tier.quantity) ?? tier.unitPrice
+    }));
+
+    if (effectiveTiers.length === 0) {
+      return null;
+    }
+
+    const exactTier = effectiveTiers.find((tier) => tier.quantity === quantity);
+    if (exactTier) return exactTier.unitPrice;
+
+    const gapTier = [...effectiveTiers].reverse().find((tier) => tier.quantity <= quantity);
+    if (gapTier) return gapTier.unitPrice;
+
+    return effectiveTiers[0].unitPrice;
+  }
+
   parseQuantity(value) {
     const parsed = Number.parseInt(value, 10);
     if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -50,7 +74,7 @@ class RechargeRequestsService {
     }));
   }
 
-  async resolvePrice({ credentialId, serverId, unitPrice }) {
+  async resolvePrice({ credentialId, serverId, quantity, unitPrice }) {
     if (unitPrice !== undefined && unitPrice !== null) {
       return this.parseMoney(unitPrice);
     }
@@ -58,6 +82,15 @@ class RechargeRequestsService {
     const link = await credentialServersRepository.findOneByCredentialAndServer(credentialId, serverId);
     if (!link || !link.isActive) {
       throw new AppError('Credencial não está vinculada ao servidor informado', 400);
+    }
+
+    if (link.priceOverride !== null) {
+      return this.parseMoney(link.priceOverride);
+    }
+
+    const catalogUnitPrice = this.resolveCatalogUnitPrice(link, quantity);
+    if (catalogUnitPrice !== null) {
+      return this.parseMoney(catalogUnitPrice);
     }
 
     const effectivePrice = link.priceOverride === null ? link.basePrice : link.priceOverride;
@@ -87,6 +120,7 @@ class RechargeRequestsService {
     const unitPrice = await this.resolvePrice({
       credentialId,
       serverId,
+      quantity,
       unitPrice: payload?.unitPrice
     });
     const totalAmount = this.parseMoney(unitPrice * quantity);

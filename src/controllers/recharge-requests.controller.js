@@ -91,6 +91,20 @@ class RechargeRequestsController {
     return res.status(200).json(data);
   }
 
+  async uploadPaymentProof(req, res) {
+    await ensureRechargeAccess(req, req.params.id);
+
+    const data = await paymentProofsService.createFromWebUpload({
+      rechargeRequestId: req.params.id,
+      user: req.user || null,
+      fileName: req.body?.fileName,
+      mimeType: req.body?.mimeType,
+      contentBase64: req.body?.contentBase64
+    });
+
+    return res.status(201).json(data);
+  }
+
   async reviewLatestPaymentProof(req, res) {
     if (req.user?.type !== 'internal' && req.user?.role !== 'admin') {
       throw new AppError('Acesso negado', 403);

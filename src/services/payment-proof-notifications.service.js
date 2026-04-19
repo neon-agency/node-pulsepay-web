@@ -1,11 +1,22 @@
 const http = require('http');
 const https = require('https');
+const fs = require('fs/promises');
+const path = require('path');
 const integrationsService = require('./bot-integrations.service');
 const usersRepository = require('../repositories/users.repository');
 const notificationsRepository = require('../repositories/recharge-request-notifications.repository');
 const { createId } = require('../utils/id');
 
 class PaymentProofNotificationsService {
+  isLocalMediaRef(value) {
+    return String(value || '').startsWith('local:');
+  }
+
+  getLocalPathFromMediaRef(value) {
+    const relativePath = String(value || '').replace(/^local:/, '').trim();
+    return path.resolve(process.cwd(), relativePath);
+  }
+
   getEventType(proofId) {
     return `proof_review:${proofId}`;
   }
@@ -138,7 +149,12 @@ class PaymentProofNotificationsService {
     let mediaPayload = null;
     if (proof.metaMediaId) {
       try {
-        const file = await integrationsService.downloadWhatsAppMedia(proof.metaMediaId);
+        const file = this.isLocalMediaRef(proof.metaMediaId)
+          ? {
+              mimeType: proof.mimeType || 'application/octet-stream',
+              buffer: await fs.readFile(this.getLocalPathFromMediaRef(proof.metaMediaId))
+            }
+          : await integrationsService.downloadWhatsAppMedia(proof.metaMediaId);
         const mimeType = file.mimeType || proof.mimeType || 'image/jpeg';
         mediaPayload = {
           caption: `Comprovante da recarga ${recharge.id}`,

@@ -12,6 +12,48 @@ const {
 } = require('../utils/credential');
 
 class CredentialsService {
+  parsePriceTiersOverride(value) {
+    if (value === undefined || value === null) return [];
+    if (!Array.isArray(value)) {
+      throw new AppError('priceTiersOverride deve ser uma lista', 400);
+    }
+
+    const normalized = value
+      .map((tier) => ({
+        quantity: Number(tier?.quantity),
+        unitPrice: Number(tier?.unitPrice ?? tier?.unit_price)
+      }))
+      .map((tier) => ({
+        quantity: Number.isFinite(tier.quantity) ? Math.trunc(tier.quantity) : NaN,
+        unitPrice: Number.isFinite(tier.unitPrice) ? Number(tier.unitPrice.toFixed(2)) : NaN
+      }));
+
+    if (normalized.some((tier) => !Number.isFinite(tier.quantity) || tier.quantity <= 0 || !Number.isFinite(tier.unitPrice) || tier.unitPrice <= 0)) {
+      throw new AppError('Cada item de priceTiersOverride precisa ter quantity e unitPrice maiores que zero', 400);
+    }
+
+    const uniqueQuantities = new Set(normalized.map((tier) => tier.quantity));
+    if (uniqueQuantities.size !== normalized.length) {
+      throw new AppError('priceTiersOverride não pode repetir quantity', 400);
+    }
+
+    return normalized.sort((a, b) => a.quantity - b.quantity);
+  }
+
+  buildEffectivePriceTiers(serverPriceTiers = [], priceTiersOverride = [], fallbackBasePrice = 0) {
+    const baseTiers = Array.isArray(serverPriceTiers) && serverPriceTiers.length > 0
+      ? serverPriceTiers
+      : [{ quantity: 1, unitPrice: fallbackBasePrice }];
+    const overrideByQuantity = new Map(
+      (priceTiersOverride || []).map((tier) => [tier.quantity, tier.unitPrice])
+    );
+
+    return baseTiers.map((tier) => ({
+      quantity: tier.quantity,
+      unitPrice: overrideByQuantity.get(tier.quantity) ?? tier.unitPrice
+    }));
+  }
+
   parsePrice(value) {
     if (value === undefined || value === null || value === '') return null;
     const parsed = Number(value);
@@ -72,6 +114,7 @@ class CredentialsService {
     return {
       serverId,
       priceOverride: this.parsePrice(payload?.priceOverride),
+      priceTiersOverride: this.parsePriceTiersOverride(payload?.priceTiersOverride),
       isActive: payload?.isActive !== false,
       email,
       login
@@ -135,6 +178,7 @@ class CredentialsService {
     const links = await credentialServersRepository.findByCredentialIdWithServers(credentialId);
     return links.map((link) => ({
       ...link,
+      priceTiers: this.buildEffectivePriceTiers(link.serverPriceTiers, link.priceTiersOverride, link.basePrice),
       effectivePrice: link.priceOverride === null ? link.basePrice : link.priceOverride
     }));
   }
@@ -166,6 +210,7 @@ class CredentialsService {
       credentialId,
       serverId: item.serverId,
       priceOverride: item.priceOverride,
+      priceTiersOverride: item.priceTiersOverride,
       isActive: item.isActive,
       email: item.email,
       login: item.login
@@ -210,6 +255,8 @@ class CredentialsService {
       servidor: link.servidor,
       basePrice: link.basePrice,
       priceOverride: link.priceOverride,
+      priceTiersOverride: link.priceTiersOverride,
+      priceTiers: this.buildEffectivePriceTiers(link.serverPriceTiers, link.priceTiersOverride, link.basePrice),
       effectivePrice: link.priceOverride === null ? link.basePrice : link.priceOverride,
       email: link.email ?? null,
       login: link.login ?? null

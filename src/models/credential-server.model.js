@@ -6,6 +6,7 @@ class CredentialServerModel {
     credentialId,
     serverId,
     priceOverride = null,
+    priceTiersOverride = [],
     isActive = true,
     email = null,
     login = null
@@ -14,6 +15,7 @@ class CredentialServerModel {
     this.credentialId = credentialId;
     this.serverId = serverId;
     this.priceOverride = priceOverride;
+    this.priceTiersOverride = priceTiersOverride;
     this.isActive = isActive;
     this.email = email;
     this.login = login;

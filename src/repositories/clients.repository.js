@@ -140,6 +140,10 @@ class ClientsRepository {
 
   async remove(id) {
     const deleted = await db.transaction(async (trx) => {
+      await trx('users')
+        .where({ client_id: id })
+        .del();
+
       const credentialIds = await trx('credentials')
         .where({ client_id: id })
         .pluck('id');
