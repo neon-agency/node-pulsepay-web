@@ -1,7 +1,7 @@
 {
   "rewrites": [
     {
-      "source": "/api/(auth|servers|clients|dashboard|credentials|recharge-requests|bot)(.*)",
+      "source": "/api/(auth|users|servers|clients|dashboard|credentials|recharge-requests|bot)(.*)",
       "destination": "/api"
     },
     {
