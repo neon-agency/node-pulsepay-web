@@ -144,7 +144,7 @@ class PaymentProofNotificationsService {
   }
 
   async notifyPendingReview({ recharge, proof }) {
-    const recipients = await usersRepository.findAllActiveWithWhatsapp();
+    const recipients = await usersRepository.findAllAdminsWithWhatsapp();
     if (recipients.length === 0) {
       return;
     }

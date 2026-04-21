@@ -40,6 +40,15 @@ class UsersRepository {
     return rows.map((row) => this.mapRow(row));
   }
 
+  async findAllAdminsWithWhatsapp() {
+    const rows = await db('users')
+      .where({ is_active: true, role: 'admin' })
+      .whereNotNull('whatsapp_phone')
+      .orderBy('created_at', 'asc');
+
+    return rows.map((row) => this.mapRow(row));
+  }
+
   async findByClientId(clientId) {
     const row = await db('users').where({ client_id: clientId }).first();
     return this.mapRow(row);
