@@ -12,6 +12,10 @@ class PaymentProofNotificationsService {
     return String(value || '').startsWith('local:');
   }
 
+  isInlineMediaRef(value) {
+    return String(value || '').startsWith('inline:');
+  }
+
   getLocalPathFromMediaRef(value) {
     const relativePath = String(value || '').replace(/^local:/, '').trim();
     return path.resolve(process.cwd(), relativePath);
@@ -147,14 +151,24 @@ class PaymentProofNotificationsService {
 
     const connected = await this.isZapConnected();
     let mediaPayload = null;
-    if (proof.metaMediaId) {
+    if (proof.metaMediaId || proof.fileContentBase64) {
       try {
-        const file = this.isLocalMediaRef(proof.metaMediaId)
-          ? {
-              mimeType: proof.mimeType || 'application/octet-stream',
-              buffer: await fs.readFile(this.getLocalPathFromMediaRef(proof.metaMediaId))
-            }
-          : await integrationsService.downloadWhatsAppMedia(proof.metaMediaId);
+        let file;
+        if (proof.fileContentBase64) {
+          file = {
+            mimeType: proof.mimeType || 'application/octet-stream',
+            buffer: Buffer.from(proof.fileContentBase64, 'base64')
+          };
+        } else if (this.isInlineMediaRef(proof.metaMediaId)) {
+          throw new Error('Comprovante inline sem conteudo no banco');
+        } else if (this.isLocalMediaRef(proof.metaMediaId)) {
+          file = {
+            mimeType: proof.mimeType || 'application/octet-stream',
+            buffer: await fs.readFile(this.getLocalPathFromMediaRef(proof.metaMediaId))
+          };
+        } else {
+          file = await integrationsService.downloadWhatsAppMedia(proof.metaMediaId);
+        }
         const mimeType = file.mimeType || proof.mimeType || 'image/jpeg';
         mediaPayload = {
           caption: `Comprovante da recarga ${recharge.id}`,

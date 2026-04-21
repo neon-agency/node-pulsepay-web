@@ -14,8 +14,12 @@ class PaymentProofsService {
     return path.resolve(process.cwd(), 'storage', 'payment-proofs');
   }
 
-  buildLocalMediaRef(relativePath) {
-    return `local:${relativePath}`;
+  buildInlineMediaRef(proofId) {
+    return `inline:${proofId}`;
+  }
+
+  isInlineMediaRef(value) {
+    return String(value || '').startsWith('inline:');
   }
 
   isLocalMediaRef(value) {
@@ -27,13 +31,18 @@ class PaymentProofsService {
     return path.resolve(process.cwd(), relativePath);
   }
 
-  async saveLocalProofFile({ proofId, fileName, fileBuffer }) {
-    const ext = path.extname(String(fileName || '')).slice(0, 12) || '.bin';
-    const relativePath = path.join('storage', 'payment-proofs', `${proofId}${ext}`);
-    const absolutePath = path.resolve(process.cwd(), relativePath);
-    await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-    await fs.writeFile(absolutePath, fileBuffer);
-    return relativePath;
+  async tryWriteLocalProofFile({ proofId, fileName, fileBuffer }) {
+    try {
+      const ext = path.extname(String(fileName || '')).slice(0, 12) || '.bin';
+      const relativePath = path.join('storage', 'payment-proofs', `${proofId}${ext}`);
+      const absolutePath = path.resolve(process.cwd(), relativePath);
+      await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+      await fs.writeFile(absolutePath, fileBuffer);
+      return relativePath;
+    } catch (error) {
+      console.warn('Disco local indisponivel; comprovante sera mantido somente no banco:', error?.message || error);
+      return null;
+    }
   }
 
   async notifyCustomerOutcome(recharge, decision) {
@@ -98,8 +107,10 @@ class PaymentProofsService {
     });
 
     let analysis;
+    let downloadedBuffer = null;
     try {
       const download = await integrationsService.downloadWhatsAppMedia(media.id);
+      downloadedBuffer = download.buffer || null;
       analysis = await paymentProofAnalysisService.analyze({
         mimeType: download.mimeType || media.mimeType || 'image/jpeg',
         fileBuffer: download.buffer,
@@ -117,6 +128,16 @@ class PaymentProofsService {
           message: error instanceof Error ? error.message : 'Falha desconhecida'
         }
       };
+    }
+
+    if (downloadedBuffer) {
+      const persisted = await paymentProofsRepository.updateFileContent(
+        proof.id,
+        downloadedBuffer.toString('base64')
+      );
+      if (persisted) {
+        proof.fileContentBase64 = persisted.fileContentBase64;
+      }
     }
 
     let updatedProof = proof;
@@ -177,22 +198,20 @@ class PaymentProofsService {
     }
 
     const proofId = createId('proof');
-    const relativePath = await this.saveLocalProofFile({
-      proofId,
-      fileName,
-      fileBuffer
-    });
+    const contentBase64Clean = fileBuffer.toString('base64');
+    await this.tryWriteLocalProofFile({ proofId, fileName, fileBuffer });
 
     const proof = await paymentProofsRepository.create({
       id: proofId,
       rechargeRequestId,
       senderPhone: user?.whatsappPhone || `web:${user?.id || 'unknown'}`,
       metaMessageId: null,
-      metaMediaId: this.buildLocalMediaRef(relativePath),
+      metaMediaId: this.buildInlineMediaRef(proofId),
       mimeType: normalizedMimeType,
       fileName: fileName || `comprovante-${recharge.id}`,
       caption: 'Comprovante enviado pelo portal web',
-      reviewStatus: 'pending_review'
+      reviewStatus: 'pending_review',
+      fileContentBase64: contentBase64Clean
     });
 
     const analysis = await paymentProofAnalysisService.analyze({
@@ -277,17 +296,32 @@ class PaymentProofsService {
 
   async downloadProofFile(rechargeRequestId) {
     const { proof } = await this.getLatestByRechargeRequestId(rechargeRequestId);
-    if (!proof.metaMediaId) {
+    if (!proof.metaMediaId && !proof.fileContentBase64) {
       throw new AppError('Comprovante nao possui arquivo vinculado', 404);
     }
 
-    if (this.isLocalMediaRef(proof.metaMediaId)) {
-      const absolutePath = this.getLocalPathFromMediaRef(proof.metaMediaId);
-      const buffer = await fs.readFile(absolutePath);
+    if (proof.fileContentBase64) {
       return {
         mimeType: proof.mimeType || 'application/octet-stream',
-        buffer
+        buffer: Buffer.from(proof.fileContentBase64, 'base64')
       };
+    }
+
+    if (this.isInlineMediaRef(proof.metaMediaId)) {
+      throw new AppError('Arquivo do comprovante indisponivel', 404);
+    }
+
+    if (this.isLocalMediaRef(proof.metaMediaId)) {
+      try {
+        const absolutePath = this.getLocalPathFromMediaRef(proof.metaMediaId);
+        const buffer = await fs.readFile(absolutePath);
+        return {
+          mimeType: proof.mimeType || 'application/octet-stream',
+          buffer
+        };
+      } catch (error) {
+        throw new AppError('Arquivo do comprovante indisponivel', 404);
+      }
     }
 
     return integrationsService.downloadWhatsAppMedia(proof.metaMediaId);

@@ -30,9 +30,15 @@ class RechargeRequestPaymentProofsRepository {
       reviewedByUserId: row.reviewed_by_user_id,
       reviewerNotes: row.reviewer_notes,
       reviewedAt: row.reviewed_at,
+      fileContentBase64: row.file_content_base64 || null,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
+  }
+
+  async findById(id) {
+    const row = await db('recharge_request_payment_proofs').where({ id }).first();
+    return this.mapRow(row);
   }
 
   async create(payload) {
@@ -55,7 +61,8 @@ class RechargeRequestPaymentProofsRepository {
       raw_analysis_json: payload.rawAnalysisJson || null,
       reviewed_by_user_id: payload.reviewedByUserId || null,
       reviewer_notes: payload.reviewerNotes || null,
-      reviewed_at: payload.reviewedAt || null
+      reviewed_at: payload.reviewedAt || null,
+      file_content_base64: payload.fileContentBase64 || null
     };
 
     let row;
@@ -66,14 +73,16 @@ class RechargeRequestPaymentProofsRepository {
     } catch (firstError) {
       console.error('Falha ao criar comprovante; tentando versao reduzida:', firstError);
       try {
+        const reducedInsert = {
+          ...baseInsert,
+          caption: null,
+          analysis_summary: null,
+          raw_analysis_json: null,
+          reviewer_notes: null
+        };
+        delete reducedInsert.file_content_base64;
         [row] = await db('recharge_request_payment_proofs')
-          .insert({
-            ...baseInsert,
-            caption: null,
-            analysis_summary: null,
-            raw_analysis_json: null,
-            reviewer_notes: null
-          })
+          .insert(reducedInsert)
           .returning('*');
       } catch (secondError) {
         console.error('Falha ao criar comprovante reduzido; tentando versao minima:', secondError);
@@ -124,6 +133,22 @@ class RechargeRequestPaymentProofsRepository {
     }
 
     return this.mapRow(row);
+  }
+
+  async updateFileContent(id, fileContentBase64) {
+    try {
+      const [row] = await db('recharge_request_payment_proofs')
+        .where({ id })
+        .update({
+          file_content_base64: fileContentBase64 || null,
+          updated_at: db.fn.now()
+        })
+        .returning('*');
+      return this.mapRow(row);
+    } catch (error) {
+      console.error('Falha ao persistir conteudo do comprovante no banco:', error);
+      return null;
+    }
   }
 
   async markReviewed(id, payload) {
