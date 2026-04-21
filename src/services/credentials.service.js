@@ -220,6 +220,64 @@ class CredentialsService {
     return this.listServers(credentialId);
   }
 
+  async resolveCredentialByEmail(payload) {
+    const email = String(payload?.email || '').trim().toLowerCase();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new AppError('Informe um email válido', 400);
+    }
+
+    const rows = await credentialServersRepository.findActiveByEmailWithCredentialAndServer(email);
+    if (rows.length === 0) {
+      throw new AppError('Nenhuma credencial encontrada para esse email', 404);
+    }
+
+    const credentialIds = [...new Set(rows.map((row) => row.credential_id))];
+    if (credentialIds.length > 1) {
+      throw new AppError(
+        'Esse email está vinculado a várias credenciais; contate o suporte.',
+        409
+      );
+    }
+
+    const first = rows[0];
+    const client = await clientsRepository.findById(first.credential_client_id);
+    if (!client) {
+      throw new AppError('Cliente da credencial não encontrado', 500);
+    }
+
+    const availableServers = rows.map((row) => {
+      const mapped = credentialServersRepository.mapRowWithServer(row);
+      return {
+        id: mapped.id,
+        serverId: String(mapped.serverId),
+        servidor: mapped.servidor,
+        basePrice: mapped.basePrice,
+        priceOverride: mapped.priceOverride,
+        priceTiersOverride: mapped.priceTiersOverride,
+        priceTiers: this.buildEffectivePriceTiers(mapped.serverPriceTiers, mapped.priceTiersOverride, mapped.basePrice),
+        effectivePrice: mapped.priceOverride === null ? mapped.basePrice : mapped.priceOverride,
+        email: mapped.email ?? null,
+        login: mapped.login ?? null
+      };
+    });
+
+    return {
+      credential: {
+        id: first.credential_id,
+        nome: first.credential_nome,
+        last4: first.credential_last4,
+        clientId: client.id
+      },
+      client: {
+        id: client.id,
+        nome: client.nome,
+        telefone: client.telefone
+      },
+      email,
+      servers: availableServers
+    };
+  }
+
   async resolveCredentialWithServers(payload) {
     const nome = String(payload?.nome || '').trim();
     const last4 = sanitizeLast4(payload?.last4);

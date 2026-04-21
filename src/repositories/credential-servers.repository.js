@@ -57,6 +57,27 @@ class CredentialServersRepository {
     return rows.map((row) => this.mapRowWithServer(row));
   }
 
+  async findActiveByEmailWithCredentialAndServer(email) {
+    const normalized = String(email || '').trim().toLowerCase();
+    if (!normalized) return [];
+
+    return db('credential_servers as cs')
+      .innerJoin('servers as s', 's.id', 'cs.server_id')
+      .innerJoin('credentials as c', 'c.id', 'cs.credential_id')
+      .select(
+        'cs.*',
+        's.servidor',
+        's.base_price',
+        's.price_tiers as server_price_tiers',
+        'c.nome as credential_nome',
+        'c.last4 as credential_last4',
+        'c.client_id as credential_client_id'
+      )
+      .whereRaw('LOWER(cs.email) = ?', [normalized])
+      .andWhere('cs.is_active', true)
+      .orderBy('cs.created_at', 'desc');
+  }
+
   async findOneByCredentialAndServer(credentialId, serverId) {
     const row = await db('credential_servers as cs')
       .innerJoin('servers as s', 's.id', 'cs.server_id')

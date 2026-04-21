@@ -9,7 +9,7 @@ const STAGES = {
   START: 'START',
   ASK_PANEL: 'ASK_PANEL',
   ASK_DOUBT: 'ASK_DOUBT',
-  ASK_CREDENTIAL_COMBINED: 'ASK_CREDENTIAL_COMBINED',
+  ASK_PANEL_EMAIL: 'ASK_PANEL_EMAIL',
   ASK_SERVER: 'ASK_SERVER',
   ASK_QUANTITY: 'ASK_QUANTITY',
   CONFIRM_SUMMARY: 'CONFIRM_SUMMARY',
@@ -44,24 +44,11 @@ class BotService {
     return amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   }
 
-  sanitizeLast4(value) {
-    return String(value || '').replace(/\D/g, '').slice(-4);
-  }
-
-  parseCredentialInput(value) {
-    const normalized = String(value || '').trim().replace(/\s+/g, ' ');
-    const match = normalized.match(/^(.*?)[\s\-_/.,:;]*(\d{4})$/);
-    if (!match) {
-      return null;
-    }
-
-    const name = String(match[1] || '').trim();
-    const last4 = this.sanitizeLast4(match[2]);
-    if (!name || last4.length !== 4) {
-      return null;
-    }
-
-    return { name, last4 };
+  parsePanelEmail(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (!normalized) return null;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) return null;
+    return normalized;
   }
 
   normalizeServerButtonTitle(name) {
@@ -312,10 +299,10 @@ class BotService {
       case STAGES.ASK_PANEL:
         if (text === '1') {
           await sendButtons(
-            'Perfeito! ✅\n\nEnvie o *nome + os 4 últimos dígitos da credencial na mesma mensagem*.\n\n*Formato correto (com ou sem espaço):*\n`joao 1265`\n`joao1265`\n`maria silva 4321`',
+            'Perfeito! ✅\n\nEnvie o *email de login do painel* vinculado à sua credencial.\n\n*Exemplo:*\n`seuemail@dominio.com`',
             []
           );
-          session.stage = STAGES.ASK_CREDENTIAL_COMBINED;
+          session.stage = STAGES.ASK_PANEL_EMAIL;
           break;
         }
 
@@ -345,60 +332,57 @@ class BotService {
         session.stage = STAGES.START;
         break;
 
-      case STAGES.ASK_CREDENTIAL_COMBINED: {
-        const parsedCredential = this.parseCredentialInput(text);
-        if (!parsedCredential) {
+      case STAGES.ASK_PANEL_EMAIL: {
+        const panelEmail = this.parsePanelEmail(text);
+        if (!panelEmail) {
           await sendButtons(
-            'Não consegui entender. Envie *nome + 4 dígitos* na mesma mensagem.\n\n*Exemplos:*\n`joao 1265`\n`joao1265`',
+            'Não consegui entender. Envie o *email de login do painel*.\n\n*Exemplo:* `seuemail@dominio.com`',
             []
           );
           break;
         }
 
         try {
-          const resolved = await credentialsService.resolveCredentialWithServers({
-            nome: parsedCredential.name,
-            last4: parsedCredential.last4
-          });
+          const resolved = await credentialsService.resolveCredentialByEmail({ email: panelEmail });
 
           const serverChoices = this.buildServerChoices(resolved.servers || []);
           if (!serverChoices.length) {
-            await sendText('⚠️ Sua credencial não possui servidores ativos vinculados.');
+            await sendText('⚠️ Esse email não possui servidores ativos vinculados.');
             session.stage = STAGES.START;
             break;
           }
 
           session.credential = resolved.credential;
-          session.credentialName = parsedCredential.name;
+          session.panelEmail = resolved.email;
           session.serverChoices = serverChoices;
           session.serverPage = await this.sendServerPicker(sendList, sendButtons, sendText, serverChoices, true, 0);
           session.stage = STAGES.ASK_SERVER;
           break;
         } catch (error) {
-          console.error('Erro ao resolver credencial no bot:', error);
+          console.error('Erro ao resolver credencial por email no bot:', error);
           if (error?.statusCode === 404) {
             await sendButtons(
-              '❌ Não encontrei uma credencial com esse *nome + 4 dígitos*.\n\nConfira se o nome está igual ao cadastro e tente novamente.\n*Exemplos:* `joao 1265` ou `joao1265`',
+              '❌ Não encontrei credencial com esse *email*.\n\nConfira se o email está igual ao cadastro e tente novamente.\n*Exemplo:* `seuemail@dominio.com`',
               []
             );
-            session.stage = STAGES.ASK_CREDENTIAL_COMBINED;
+            session.stage = STAGES.ASK_PANEL_EMAIL;
             break;
           }
 
           if (error?.statusCode === 409) {
             await sendButtons(
-              `⚠️ ${error.message}\n\nSe precisar, envie novamente no formato:\n*Exemplos:* \`joao 1265\` ou \`joao1265\``,
+              `⚠️ ${error.message}\n\nSe precisar, envie novamente o *email do painel*.\n*Exemplo:* \`seuemail@dominio.com\``,
               []
             );
-            session.stage = STAGES.ASK_CREDENTIAL_COMBINED;
+            session.stage = STAGES.ASK_PANEL_EMAIL;
             break;
           }
 
           await sendButtons(
-            '❌ Não consegui validar essa credencial agora por um erro interno.\n\nTente novamente em instantes ou chame o suporte.',
+            '❌ Não consegui validar esse email agora por um erro interno.\n\nTente novamente em instantes ou chame o suporte.',
             []
           );
-          session.stage = STAGES.ASK_CREDENTIAL_COMBINED;
+          session.stage = STAGES.ASK_PANEL_EMAIL;
           break;
         }
       }
@@ -423,7 +407,7 @@ class BotService {
           session.panel_id = selectedServer.serverId;
           session.panel_name = selectedServer.serverName;
           session.unitPrice = Number(selectedServer.unitPrice);
-          session.login = session.credential?.nome || session.credentialName;
+          session.login = session.panelEmail;
           await sendButtons(`Perfeito! Servidor *${session.panel_name}* selecionado.\n\nAgora me informe quantos créditos você deseja recarregar.`, []);
           session.stage = STAGES.ASK_QUANTITY;
           break;
@@ -461,7 +445,7 @@ class BotService {
           const summary = [
             '📊 *RESUMO DO PEDIDO*',
             '━━━━━━━━━━━━━━',
-            `👤 *Usuário:* ${session.credential?.nome || session.credentialName} (${session.credential?.last4 || '****'})`,
+            `👤 *Email do painel:* ${session.panelEmail}`,
             `🔹 *Servidor:* ${session.panel_name}`,
             `🔹 *Quantidade:* ${qty} unidade(s)`,
             `💳 *Valor unitário:* ${this.formatMoney(session.unitPrice)}`,
