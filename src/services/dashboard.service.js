@@ -135,7 +135,6 @@ class DashboardService {
       .select(
         's.id as server_id',
         's.servidor as server_nome',
-        'rr.payment_status as payment_status',
         db.raw('SUM(rr.quantity)::int as total_credits'),
         db.raw('SUM(rr.total_amount)::numeric as total_amount'),
         db.raw('COUNT(rr.id)::int as total_orders')
