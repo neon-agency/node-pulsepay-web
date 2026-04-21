@@ -34,6 +34,49 @@ function startOf(period) {
 }
 
 class DashboardService {
+  async resellersRanking({ period = 'all', limit = 20 } = {}) {
+    const normalizedLimit = Math.min(Math.max(Number.parseInt(limit, 10) || 20, 1), 100);
+    const cutoff = period && period !== 'all' ? startOf(period) : null;
+
+    let query = db('recharge_requests as rr')
+      .innerJoin('credentials as c', 'c.id', 'rr.credential_id')
+      .innerJoin('clients as cl', 'cl.id', 'c.client_id')
+      .where('rr.payment_status', 'pago')
+      .groupBy('cl.id', 'cl.nome', 'cl.email', 'cl.telefone', 'cl.tipo')
+      .select(
+        'cl.id as client_id',
+        'cl.nome as client_nome',
+        'cl.email as client_email',
+        'cl.telefone as client_telefone',
+        'cl.tipo as client_tipo',
+        db.raw('SUM(rr.quantity)::int as total_credits'),
+        db.raw('SUM(rr.total_amount)::numeric as total_amount'),
+        db.raw('COUNT(rr.id)::int as total_orders'),
+        db.raw('MAX(rr.updated_at) as last_purchase_at')
+      )
+      .orderBy('total_credits', 'desc')
+      .limit(normalizedLimit);
+
+    if (cutoff) {
+      query = query.where('rr.updated_at', '>=', cutoff);
+    }
+
+    const rows = await query;
+
+    return rows.map((row, index) => ({
+      position: index + 1,
+      clientId: row.client_id,
+      clientNome: row.client_nome,
+      clientEmail: row.client_email,
+      clientTelefone: row.client_telefone,
+      clientTipo: row.client_tipo,
+      totalCredits: Number(row.total_credits) || 0,
+      totalAmount: toMoney(Number(row.total_amount) || 0),
+      totalOrders: Number(row.total_orders) || 0,
+      lastPurchaseAt: row.last_purchase_at
+    }));
+  }
+
   async summary() {
     const [clients, servers] = await Promise.all([
       clientsRepository.findAll(),
