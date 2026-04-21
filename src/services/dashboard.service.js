@@ -77,6 +77,158 @@ class DashboardService {
     }));
   }
 
+  async serversRanking({ period = 'all', limit = 50 } = {}) {
+    const normalizedLimit = Math.min(Math.max(Number.parseInt(limit, 10) || 50, 1), 200);
+    const cutoff = period && period !== 'all' ? startOf(period) : null;
+
+    let query = db('recharge_requests as rr')
+      .innerJoin('servers as s', 's.id', 'rr.server_id')
+      .where('rr.payment_status', 'pago')
+      .groupBy('s.id', 's.servidor', 's.custo_credito')
+      .select(
+        's.id as server_id',
+        's.servidor as server_nome',
+        's.custo_credito as custo_credito',
+        db.raw('SUM(rr.quantity)::int as total_credits'),
+        db.raw('SUM(rr.total_amount)::numeric as total_amount'),
+        db.raw('COUNT(rr.id)::int as total_orders'),
+        db.raw('MAX(rr.updated_at) as last_purchase_at')
+      )
+      .orderBy('total_credits', 'desc')
+      .limit(normalizedLimit);
+
+    if (cutoff) {
+      query = query.where('rr.updated_at', '>=', cutoff);
+    }
+
+    const rows = await query;
+
+    return rows.map((row, index) => {
+      const credits = Number(row.total_credits) || 0;
+      const bruto = Number(row.total_amount) || 0;
+      const custo = Number(row.custo_credito) || 0;
+      const liquido = bruto - credits * custo;
+      return {
+        position: index + 1,
+        serverId: row.server_id,
+        servidor: row.server_nome,
+        totalCredits: credits,
+        totalAmount: toMoney(bruto),
+        totalLiquid: toMoney(liquido),
+        totalOrders: Number(row.total_orders) || 0,
+        lastPurchaseAt: row.last_purchase_at
+      };
+    });
+  }
+
+  async resellerDetails({ clientId, period = 'all' } = {}) {
+    if (!clientId) {
+      return { clientId: null, totals: { credits: 0, amount: 0, orders: 0 }, origins: [] };
+    }
+    const cutoff = period && period !== 'all' ? startOf(period) : null;
+
+    let query = db('recharge_requests as rr')
+      .innerJoin('credentials as c', 'c.id', 'rr.credential_id')
+      .innerJoin('servers as s', 's.id', 'rr.server_id')
+      .where('c.client_id', clientId)
+      .groupBy('s.id', 's.servidor')
+      .select(
+        's.id as server_id',
+        's.servidor as server_nome',
+        'rr.payment_status as payment_status',
+        db.raw('SUM(rr.quantity)::int as total_credits'),
+        db.raw('SUM(rr.total_amount)::numeric as total_amount'),
+        db.raw('COUNT(rr.id)::int as total_orders')
+      )
+      .orderBy('total_credits', 'desc');
+
+    if (cutoff) {
+      query = query.where('rr.updated_at', '>=', cutoff);
+    }
+
+    const rows = await query;
+
+    const origins = rows.map((row) => ({
+      serverId: row.server_id,
+      servidor: row.server_nome,
+      totalCredits: Number(row.total_credits) || 0,
+      totalAmount: toMoney(Number(row.total_amount) || 0),
+      totalOrders: Number(row.total_orders) || 0
+    }));
+
+    const totals = origins.reduce(
+      (acc, o) => {
+        acc.credits += o.totalCredits;
+        acc.amount = toMoney(acc.amount + o.totalAmount);
+        acc.orders += o.totalOrders;
+        return acc;
+      },
+      { credits: 0, amount: 0, orders: 0 }
+    );
+
+    return { clientId, totals, origins };
+  }
+
+  async finances({ period = 'all' } = {}) {
+    const cutoff = period && period !== 'all' ? startOf(period) : null;
+
+    const servers = await serversRepository.findAll();
+    const custoByServerId = new Map(servers.map((s) => [String(s.id), Number(s.custoCredito ?? 0)]));
+
+    let query = db('recharge_requests')
+      .where('payment_status', 'pago')
+      .select('server_id', 'quantity', 'total_amount', 'created_at', 'updated_at');
+
+    if (cutoff) {
+      query = query.where('updated_at', '>=', cutoff);
+    }
+
+    const paidRecharges = await query;
+
+    const byServer = new Map();
+    for (const recharge of paidRecharges) {
+      const sid = String(recharge.server_id);
+      const custo = custoByServerId.get(sid) ?? 0;
+      const bruto = Number(recharge.total_amount) || 0;
+      const qty = Number(recharge.quantity) || 0;
+      const liquido = bruto - qty * custo;
+      const current = byServer.get(sid) || {
+        serverId: recharge.server_id,
+        servidor: servers.find((s) => String(s.id) === sid)?.servidor || '—',
+        totalCredits: 0,
+        totalBruto: 0,
+        totalLiquido: 0,
+        totalOrders: 0
+      };
+      current.totalCredits += qty;
+      current.totalBruto += bruto;
+      current.totalLiquido += liquido;
+      current.totalOrders += 1;
+      byServer.set(sid, current);
+    }
+
+    const servidores = Array.from(byServer.values())
+      .map((row) => ({
+        ...row,
+        totalBruto: toMoney(row.totalBruto),
+        totalLiquido: toMoney(row.totalLiquido)
+      }))
+      .sort((a, b) => b.totalBruto - a.totalBruto);
+
+    const totals = servidores.reduce(
+      (acc, row) => {
+        acc.credits += row.totalCredits;
+        acc.bruto = toMoney(acc.bruto + row.totalBruto);
+        acc.liquido = toMoney(acc.liquido + row.totalLiquido);
+        acc.orders += row.totalOrders;
+        return acc;
+      },
+      { credits: 0, bruto: 0, liquido: 0, orders: 0 }
+    );
+
+    return { totals, servidores };
+  }
+
   async summary() {
     const [clients, servers] = await Promise.all([
       clientsRepository.findAll(),

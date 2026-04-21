@@ -11,6 +11,25 @@ class DashboardController {
     const data = await dashboardService.resellersRanking({ period, limit });
     return res.status(200).json(data);
   }
+
+  async serversRanking(req, res) {
+    const { period, limit } = req.query || {};
+    const data = await dashboardService.serversRanking({ period, limit });
+    return res.status(200).json(data);
+  }
+
+  async resellerDetails(req, res) {
+    const { clientId } = req.params || {};
+    const { period } = req.query || {};
+    const data = await dashboardService.resellerDetails({ clientId, period });
+    return res.status(200).json(data);
+  }
+
+  async finances(req, res) {
+    const { period } = req.query || {};
+    const data = await dashboardService.finances({ period });
+    return res.status(200).json(data);
+  }
 }
 
 module.exports = new DashboardController();

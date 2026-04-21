@@ -9,5 +9,17 @@ dashboardRoutes.get(
   '/resellers-ranking',
   asyncHandler((req, res) => dashboardController.resellersRanking(req, res))
 );
+dashboardRoutes.get(
+  '/resellers-ranking/:clientId/details',
+  asyncHandler((req, res) => dashboardController.resellerDetails(req, res))
+);
+dashboardRoutes.get(
+  '/servers-ranking',
+  asyncHandler((req, res) => dashboardController.serversRanking(req, res))
+);
+dashboardRoutes.get(
+  '/finances',
+  asyncHandler((req, res) => dashboardController.finances(req, res))
+);
 
 module.exports = dashboardRoutes;

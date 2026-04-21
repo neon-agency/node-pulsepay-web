@@ -238,7 +238,7 @@ class PaymentProofsService {
     };
   }
 
-  async createFromWebUpload({ rechargeRequestId, user, fileName, mimeType, contentBase64 }) {
+  async createFromWebUpload({ rechargeRequestId, user, fileName, mimeType, contentBase64, comment }) {
     const recharge = await rechargeRequestsRepository.findById(rechargeRequestId);
     if (!recharge) {
       throw new AppError('Solicitacao de recarga nao encontrada', 404);
@@ -268,6 +268,9 @@ class PaymentProofsService {
     const contentBase64Clean = fileBuffer.toString('base64');
     await this.tryWriteLocalProofFile({ proofId, fileName, fileBuffer });
 
+    const trimmedComment = String(comment || '').trim().slice(0, 500);
+    const captionValue = trimmedComment || 'Comprovante enviado pelo portal web';
+
     const proof = await paymentProofsRepository.create({
       id: proofId,
       rechargeRequestId,
@@ -276,7 +279,7 @@ class PaymentProofsService {
       metaMediaId: this.buildInlineMediaRef(proofId),
       mimeType: normalizedMimeType,
       fileName: fileName || `comprovante-${recharge.id}`,
-      caption: 'Comprovante enviado pelo portal web',
+      caption: captionValue,
       reviewStatus: 'pending_review',
       fileContentBase64: contentBase64Clean
     });

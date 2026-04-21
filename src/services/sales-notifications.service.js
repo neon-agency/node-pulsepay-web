@@ -73,18 +73,26 @@ class SalesNotificationsService {
       timeZone: 'America/Sao_Paulo'
     });
 
+    const valor = Number(recharge.totalAmount).toLocaleString('pt-BR', {
+      style: 'currency',
+      currency: 'BRL'
+    });
+
     return [
       `Recarga concluída com sucesso ✅`,
       ``,
       `Olá ${recipient.name},`,
       `Sua recarga foi efetivada.`,
       ``,
-      `Valor: ${Number(recharge.totalAmount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`,
       `Servidor: ${recharge.servidor || '-'}`,
-      `Conta/Login: ${recharge.accountLogin}`,
-      `Identificador: ${recharge.id}`,
+      `Login: ${recharge.accountLogin}`,
+      `Quantidade: ${recharge.quantity}`,
+      `Valor: ${valor}`,
+      ``,
       `Data/Hora: ${formattedDate}`,
-      `Status: Pago`
+      `Identificador: ${recharge.id}`,
+      ``,
+      `EQUIPE PULSEPAY AGRADECE!`
     ].join('\n');
   }
 

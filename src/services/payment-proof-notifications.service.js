@@ -79,25 +79,34 @@ class PaymentProofNotificationsService {
   buildMessage({ recharge, proof }) {
     const revenda = recharge.createdByUserName || recharge.credentialNome || '-';
     const servidorNome = recharge.servidor || '-';
-    const servidorLink = recharge.servidorUrl ? ` >>>>>"${recharge.servidorUrl}"` : '';
     const dataHora = new Date(recharge.updatedAt || recharge.createdAt || Date.now())
       .toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
     const valor = Number(recharge.totalAmount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-    return [
+    const lines = [
       `REVENDA: ${revenda}`,
       `Telefone: ${proof.senderPhone}`,
-      `Servidor: ${servidorNome}${servidorLink}`,
+      `Servidor: ${servidorNome}`
+    ];
+
+    if (recharge.servidorUrl) {
+      lines.push(String(recharge.servidorUrl));
+    }
+
+    lines.push(
       `Login: ${recharge.accountLogin}`,
       `Quantidade: ${recharge.quantity}`,
       `Valor: ${valor}`,
       '',
-      `Painel Recarga: ${this.getAdminUrl()}`,
+      'Painel Recarga:',
+      this.getAdminUrl(),
       '',
       dataHora,
       '',
       'RECARGA FACIL'
-    ].join('\n');
+    );
+
+    return lines.join('\n');
   }
 
   async sendText(number, message) {

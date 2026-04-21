@@ -99,7 +99,8 @@ class RechargeRequestsController {
       user: req.user || null,
       fileName: req.body?.fileName,
       mimeType: req.body?.mimeType,
-      contentBase64: req.body?.contentBase64
+      contentBase64: req.body?.contentBase64,
+      comment: req.body?.comment
     });
 
     return res.status(201).json(data);
