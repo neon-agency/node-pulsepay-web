@@ -6,6 +6,7 @@ const rechargeRequestsRepository = require('../repositories/recharge-requests.re
 const paymentProofsRepository = require('../repositories/recharge-request-payment-proofs.repository');
 const paymentProofAnalysisService = require('./payment-proof-analysis.service');
 const paymentProofNotificationsService = require('./payment-proof-notifications.service');
+const salesNotificationsService = require('./sales-notifications.service');
 const rechargeRequestsService = require('./recharge-requests.service');
 const integrationsService = require('./bot-integrations.service');
 const usersRepository = require('../repositories/users.repository');
@@ -111,29 +112,22 @@ class PaymentProofsService {
   }
 
   async notifyCustomerOutcome(recharge, decision) {
+    const normalizedDecision = String(decision || '').trim().toLowerCase();
+    if (normalizedDecision === 'approved') {
+      return;
+    }
+
     const recipients = await this.resolveOutcomeRecipients(recharge);
     if (recipients.length === 0) {
       return;
     }
 
-    const normalizedDecision = String(decision || '').trim().toLowerCase();
-    const message = normalizedDecision === 'approved'
-      ? [
-          'Pagamento aprovado com sucesso. ✅',
-          '',
-          `Sua recarga ${recharge.id} foi validada e concluida.`,
-          `Servidor: ${recharge.servidor || '-'}`,
-          `Conta/Login: ${recharge.accountLogin || '-'}`,
-          `Quantidade: ${recharge.quantity}`,
-          '',
-          'Obrigado! Se precisar de algo, e so chamar.'
-        ].join('\n')
-      : [
-          'Nao conseguimos aprovar o comprovante enviado. ❌',
-          '',
-          `Recarga: ${recharge.id}`,
-          'Revise o pagamento e envie um novo comprovante para continuarmos a analise.'
-        ].join('\n');
+    const message = [
+      'Nao conseguimos aprovar o comprovante enviado. ❌',
+      '',
+      `Recarga: ${recharge.id}`,
+      'Revise o pagamento e envie um novo comprovante para continuarmos a analise.'
+    ].join('\n');
 
     for (const number of recipients) {
       try {
@@ -315,10 +309,44 @@ class PaymentProofsService {
       console.error('Falha ao notificar revisao de comprovante web:', error);
     }
 
+    try {
+      await this.notifyProofReceived(recharge, user);
+    } catch (error) {
+      console.error('Falha ao confirmar recebimento ao revenda:', error);
+    }
+
     return {
       recharge,
       proof: updatedProof
     };
+  }
+
+  async notifyProofReceived(recharge, user) {
+    const recipients = new Set();
+    if (user?.whatsappPhone) recipients.add(String(user.whatsappPhone).trim());
+    if (recharge?.requestedByPhone) recipients.add(String(recharge.requestedByPhone).trim());
+    const numbers = Array.from(recipients).filter(Boolean);
+    if (numbers.length === 0) return;
+
+    const message = [
+      'Comprovante recebido com sucesso. ✅',
+      '',
+      `Recarga: ${recharge.id}`,
+      'Você será notificado quando a recarga for efetuada.'
+    ].join('\n');
+
+    for (const number of numbers) {
+      try {
+        await this.sendZapText(number, message);
+      } catch (error) {
+        console.error(`Falha confirmar recebimento ${number}:`, error);
+        try {
+          await integrationsService.sendWhatsAppText(number, message);
+        } catch (fallbackError) {
+          console.error(`Fallback Meta falhou ${number}:`, fallbackError);
+        }
+      }
+    }
   }
 
   async getLatestByRechargeRequestId(rechargeRequestId) {
@@ -360,6 +388,14 @@ class PaymentProofsService {
 
     const updatedRecharge = await rechargeRequestsRepository.findById(rechargeRequestId);
     await this.notifyCustomerOutcome(updatedRecharge, normalizedDecision);
+
+    if (normalizedDecision === 'approved') {
+      try {
+        await salesNotificationsService.processPaidRecharge(updatedRecharge);
+      } catch (error) {
+        console.error('Falha ao notificar conclusao da recarga:', error);
+      }
+    }
 
     return {
       recharge: updatedRecharge,

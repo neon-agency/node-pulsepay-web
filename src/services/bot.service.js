@@ -3,6 +3,7 @@ const integrationsService = require('./bot-integrations.service');
 const credentialsService = require('./credentials.service');
 const rechargeRequestsService = require('./recharge-requests.service');
 const paymentProofsService = require('./payment-proofs.service');
+const usersRepository = require('../repositories/users.repository');
 
 const STAGES = {
   START: 'START',
@@ -195,6 +196,55 @@ class BotService {
     }
   }
 
+  parseReviewCommand(text) {
+    const raw = String(text || '').trim();
+    if (!raw) return null;
+    const approve = raw.match(/^1\s+(\S+)\s*$/i);
+    if (approve) {
+      return { decision: 'approved', rechargeRequestId: approve[1], notes: null };
+    }
+    const reject = raw.match(/^0\s+(\S+)(?:\s+([\s\S]+))?$/i);
+    if (reject) {
+      return {
+        decision: 'rejected',
+        rechargeRequestId: reject[1],
+        notes: reject[2] ? reject[2].trim() : null
+      };
+    }
+    return null;
+  }
+
+  async handleReviewCommand({ from, sendText, command }) {
+    let user;
+    try {
+      user = await usersRepository.findByWhatsappPhone(from);
+    } catch (error) {
+      console.error('Falha ao buscar admin para comando de revisao:', error);
+      return false;
+    }
+
+    if (!user || user.role !== 'admin' || !user.isActive) {
+      return false;
+    }
+
+    try {
+      await paymentProofsService.reviewLatest({
+        rechargeRequestId: command.rechargeRequestId,
+        reviewedByUserId: user.id,
+        decision: command.decision,
+        reviewerNotes: command.notes
+      });
+
+      const label = command.decision === 'approved' ? 'aprovada' : 'recusada';
+      await sendText(`Recarga ${command.rechargeRequestId} ${label} com sucesso. ✅`);
+    } catch (error) {
+      console.error('Falha ao processar comando de revisao:', error);
+      const message = error?.message || 'Erro desconhecido';
+      await sendText(`Não consegui processar o comando. ${message}`);
+    }
+    return true;
+  }
+
   async processIncomingMessage({ from, text, messageType = 'text', media = null, messageId = null }) {
     const session = await sessionsRepository.getOrCreate(from);
     const previousInteractionAt = session.lastUserMessageAt
@@ -208,6 +258,14 @@ class BotService {
       await integrationsService.sendWhatsAppButtons(from, message, prepared);
     };
     const sendList = async (message, buttonText, rows) => integrationsService.sendWhatsAppList(from, message, buttonText, rows);
+
+    const reviewCommand = this.parseReviewCommand(text);
+    if (reviewCommand) {
+      const handled = await this.handleReviewCommand({ from, sendText, command: reviewCommand });
+      if (handled) {
+        return;
+      }
+    }
 
     if (previousInteractionAt && session.stage && session.stage !== STAGES.START) {
       const inactiveForMs = Date.now() - previousInteractionAt;

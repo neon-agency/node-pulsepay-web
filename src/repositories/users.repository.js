@@ -54,6 +54,16 @@ class UsersRepository {
     return rows.map((row) => this.mapRow(row));
   }
 
+  async findByWhatsappPhone(phone) {
+    if (!phone) return null;
+    const normalized = String(phone).replace(/\D/g, '');
+    if (!normalized) return null;
+    const row = await db('users')
+      .whereRaw("regexp_replace(coalesce(whatsapp_phone,''), '\\D', '', 'g') = ?", [normalized])
+      .first();
+    return this.mapRow(row);
+  }
+
   async findAll() {
     const rows = await db('users').orderBy('created_at', 'asc');
     return rows.map((row) => this.mapRow(row));

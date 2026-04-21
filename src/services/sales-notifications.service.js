@@ -74,9 +74,11 @@ class SalesNotificationsService {
     });
 
     return [
-      `Venda confirmada`,
+      `Recarga concluída com sucesso ✅`,
       ``,
-      `Usuario: ${recipient.name}`,
+      `Olá ${recipient.name},`,
+      `Sua recarga foi efetivada.`,
+      ``,
       `Valor: ${Number(recharge.totalAmount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`,
       `Servidor: ${recharge.servidor || '-'}`,
       `Conta/Login: ${recharge.accountLogin}`,
@@ -119,6 +121,7 @@ class SalesNotificationsService {
     const byId = new Map();
     const addUser = (user) => {
       if (!user || !user.isActive || !user.whatsappPhone) return;
+      if (user.role === 'admin') return;
       byId.set(user.id, user);
     };
 
@@ -136,11 +139,6 @@ class SalesNotificationsService {
       } catch (error) {
         console.error('Falha ao buscar usuários da credencial para notificação:', error);
       }
-    }
-
-    if (byId.size === 0) {
-      const adminPool = await usersRepository.findAllActiveWithWhatsapp();
-      adminPool.forEach(addUser);
     }
 
     return Array.from(byId.values());

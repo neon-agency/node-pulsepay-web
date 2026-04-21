@@ -30,7 +30,7 @@ class PaymentProofNotificationsService {
   }
 
   getAdminUrl() {
-    return process.env.PULSEPAY_ADMIN_URL || process.env.INTERNAL_API_BASE_URL || 'https://pulsepay.webutilidades.online';
+    return process.env.PULSEPAY_ADMIN_URL || process.env.INTERNAL_API_BASE_URL || 'https://nano-gerenciador.vercel.app';
   }
 
   async makeRequest(url, { method = 'GET', payload } = {}) {
@@ -93,8 +93,8 @@ class PaymentProofNotificationsService {
       `IA: ${proof.analysisSummary || 'Sem resumo'}`,
       `Confianca IA: ${confidence}`,
       '',
-      `Para aprovar: APROVAR ${recharge.id}`,
-      `Para rejeitar: REJEITAR ${recharge.id} motivo`,
+      `Para aceitar: 1 ${recharge.id}`,
+      `Para recusar: 0 ${recharge.id} motivo`,
       '',
       `Painel: ${this.getAdminUrl()}`
     ].join('\n');
