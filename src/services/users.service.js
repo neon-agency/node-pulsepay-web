@@ -1,5 +1,6 @@
 const AppError = require('../errors/app-error');
 const usersRepository = require('../repositories/users.repository');
+const clientsRepository = require('../repositories/clients.repository');
 const { sanitizeTelefone, isValidTelefone } = require('../utils/phone');
 const { hashPassword } = require('../utils/password');
 const { createId } = require('../utils/id');
@@ -16,6 +17,19 @@ class UsersService {
       throw new AppError('Já existe um usuário com este email', 409);
     }
 
+    let whatsappPhone = null;
+    if (clientId) {
+      try {
+        const client = await clientsRepository.findById(clientId);
+        const candidate = sanitizeTelefone(client?.telefone);
+        if (candidate && isValidTelefone(candidate)) {
+          whatsappPhone = candidate;
+        }
+      } catch (error) {
+        console.error('Falha ao carregar telefone do cliente para o usuário:', error);
+      }
+    }
+
     return usersRepository.create({
       id: createId(),
       name: String(name).trim(),
@@ -23,6 +37,7 @@ class UsersService {
       passwordHash: hashPassword(String(password)),
       role,
       clientId: clientId || null,
+      whatsappPhone,
       isActive: true
     });
   }
@@ -45,6 +60,14 @@ class UsersService {
     const user = await usersRepository.updateWhatsappPhone(userId, normalized);
     if (!user) {
       throw new AppError('Usuário não encontrado', 404);
+    }
+
+    if (user.clientId) {
+      try {
+        await clientsRepository.updateTelefone(user.clientId, normalized);
+      } catch (error) {
+        console.error('Falha ao sincronizar telefone do cliente vinculado:', error);
+      }
     }
 
     return this.toPublicUser(user);

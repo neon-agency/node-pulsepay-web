@@ -91,6 +91,21 @@ class DashboardService {
       .where({ payment_status: 'pago' })
       .select('server_id', 'quantity', 'total_amount', 'created_at');
 
+    const startOfDay = startOf('dia');
+    const todayRecharges = await db('recharge_requests')
+      .where('created_at', '>=', startOfDay)
+      .select('payment_status');
+
+    const recargasDoDia = todayRecharges.reduce(
+      (acc, r) => {
+        acc.solicitadas += 1;
+        if (r.payment_status === 'pago') acc.aprovadas += 1;
+        else if (r.payment_status === 'pendente_pagamento' || r.payment_status === 'pix_gerado') acc.faltas += 1;
+        return acc;
+      },
+      { solicitadas: 0, aprovadas: 0, faltas: 0 }
+    );
+
     const periods = ['dia', 'semana', 'mes'];
     const creditosVendidos = {};
     const lucro = {};
@@ -148,7 +163,8 @@ class DashboardService {
       cards: {
         totalRevenda: { total: totalRevenda },
         creditosVendidos,
-        lucro
+        lucro,
+        recargasDoDia
       },
       distribuicaoPorServidor,
       alertasEstoque

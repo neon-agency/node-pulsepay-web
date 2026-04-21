@@ -123,6 +123,15 @@ class ClientsRepository {
     return this.mapRow(row);
   }
 
+  async updateTelefone(id, telefone) {
+    const [row] = await db('clients')
+      .where({ id })
+      .update({ telefone, updated_at: db.fn.now() })
+      .returning('*');
+
+    return this.mapRow(row);
+  }
+
   async update(id, updates) {
     const payload = {
       ...updates,

@@ -2,6 +2,7 @@ const AppError = require('../errors/app-error');
 const ClientModel = require('../models/client.model');
 const clientsRepository = require('../repositories/clients.repository');
 const serversRepository = require('../repositories/servers.repository');
+const usersRepository = require('../repositories/users.repository');
 const { sanitizeTelefone, isValidTelefone } = require('../utils/phone');
 
 function toDateOnlyString(dateInput) {
@@ -106,6 +107,18 @@ async function normalizePayload(payload, current = null) {
   };
 }
 
+async function syncLinkedUserWhatsapp(clientId, telefone) {
+  if (!clientId || !telefone) return;
+  try {
+    const user = await usersRepository.findByClientId(clientId);
+    if (user && user.whatsappPhone !== telefone) {
+      await usersRepository.updateWhatsappPhone(user.id, telefone);
+    }
+  } catch (error) {
+    console.error('Falha ao sincronizar WhatsApp do usuário vinculado:', error);
+  }
+}
+
 class ClientsService {
   async list(query = {}) {
     const tipo = normalizeTipo(query?.tipo);
@@ -139,7 +152,9 @@ class ClientsService {
     }
 
     const item = new ClientModel(data);
-    return clientsRepository.create(item);
+    const created = await clientsRepository.create(item);
+    await syncLinkedUserWhatsapp(created.id, created.telefone);
+    return created;
   }
 
   async update(id, payload) {
@@ -151,7 +166,9 @@ class ClientsService {
       throw new AppError('Já existe cliente com esse email', 409);
     }
 
-    return clientsRepository.update(current.id, data);
+    const updated = await clientsRepository.update(current.id, data);
+    await syncLinkedUserWhatsapp(updated.id, updated.telefone);
+    return updated;
   }
 
   async remove(id) {
