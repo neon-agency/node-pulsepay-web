@@ -77,26 +77,26 @@ class PaymentProofNotificationsService {
   }
 
   buildMessage({ recharge, proof }) {
-    const confidence = proof.analysisConfidence === null
-      ? 'n/d'
-      : `${Math.round(proof.analysisConfidence * 100)}%`;
+    const revenda = recharge.createdByUserName || recharge.credentialNome || '-';
+    const servidorNome = recharge.servidor || '-';
+    const servidorLink = recharge.servidorUrl ? ` >>>>>"${recharge.servidorUrl}"` : '';
+    const dataHora = new Date(recharge.updatedAt || recharge.createdAt || Date.now())
+      .toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+    const valor = Number(recharge.totalAmount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
     return [
-      'Comprovante PIX recebido para validacao',
-      '',
-      `Recarga: ${recharge.id}`,
-      `Cliente: ${recharge.credentialNome || '-'} (${recharge.credentialLast4 || '****'})`,
-      `Servidor: ${recharge.servidor || '-'}`,
+      `REVENDA: ${revenda}`,
+      `Telefone: ${proof.senderPhone}`,
+      `Servidor: ${servidorNome}${servidorLink}`,
+      `Login: ${recharge.accountLogin}`,
       `Quantidade: ${recharge.quantity}`,
-      `Valor esperado: ${Number(recharge.totalAmount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`,
-      `Telefone origem: ${proof.senderPhone}`,
-      `IA: ${proof.analysisSummary || 'Sem resumo'}`,
-      `Confianca IA: ${confidence}`,
+      `Valor: ${valor}`,
       '',
-      `Para aceitar: 1 ${recharge.id}`,
-      `Para recusar: 0 ${recharge.id} motivo`,
+      `Painel Recarga: ${this.getAdminUrl()}`,
       '',
-      `Painel: ${this.getAdminUrl()}`
+      dataHora,
+      '',
+      'RECARGA FACIL'
     ].join('\n');
   }
 

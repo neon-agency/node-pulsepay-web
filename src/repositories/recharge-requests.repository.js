@@ -32,6 +32,7 @@ class RechargeRequestsRepository {
       credentialNome: row.credential_nome,
       credentialLast4: row.credential_last4,
       servidor: row.servidor,
+      servidorUrl: row.servidor_url ?? null,
       createdByUserName: row.created_by_user_name,
       createdByUserEmail: row.created_by_user_email
     };
@@ -47,6 +48,7 @@ class RechargeRequestsRepository {
         'c.nome as credential_nome',
         'c.last4 as credential_last4',
         's.servidor',
+        's.url as servidor_url',
         'u.name as created_by_user_name',
         'u.email as created_by_user_email'
       )
@@ -70,6 +72,7 @@ class RechargeRequestsRepository {
         'c.nome as credential_nome',
         'c.last4 as credential_last4',
         's.servidor',
+        's.url as servidor_url',
         'u.name as created_by_user_name',
         'u.email as created_by_user_email'
       )
@@ -152,6 +155,7 @@ class RechargeRequestsRepository {
         'c.nome as credential_nome',
         'c.last4 as credential_last4',
         's.servidor',
+        's.url as servidor_url',
         'u.name as created_by_user_name',
         'u.email as created_by_user_email'
       )
