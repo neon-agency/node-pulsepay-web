@@ -45,6 +45,15 @@ class UsersRepository {
     return this.mapRow(row);
   }
 
+  async findActiveByClientIdWithWhatsapp(clientId) {
+    if (!clientId) return [];
+    const rows = await db('users')
+      .where({ client_id: clientId, is_active: true })
+      .whereNotNull('whatsapp_phone')
+      .orderBy('created_at', 'asc');
+    return rows.map((row) => this.mapRow(row));
+  }
+
   async findAll() {
     const rows = await db('users').orderBy('created_at', 'asc');
     return rows.map((row) => this.mapRow(row));

@@ -3,6 +3,7 @@ const https = require('https');
 const rechargeRequestsRepository = require('../repositories/recharge-requests.repository');
 const notificationsRepository = require('../repositories/recharge-request-notifications.repository');
 const usersRepository = require('../repositories/users.repository');
+const credentialsRepository = require('../repositories/credentials.repository');
 const { createId } = require('../utils/id');
 
 class SalesNotificationsService {
@@ -114,14 +115,39 @@ class SalesNotificationsService {
     });
   }
 
+  async resolveRecipients(recharge) {
+    const byId = new Map();
+    const addUser = (user) => {
+      if (!user || !user.isActive || !user.whatsappPhone) return;
+      byId.set(user.id, user);
+    };
+
+    if (recharge.createdByUserId) {
+      addUser(await usersRepository.findById(recharge.createdByUserId));
+    }
+
+    if (recharge.credentialId) {
+      try {
+        const credential = await credentialsRepository.findById(recharge.credentialId);
+        if (credential?.clientId) {
+          const resellerUsers = await usersRepository.findActiveByClientIdWithWhatsapp(credential.clientId);
+          resellerUsers.forEach(addUser);
+        }
+      } catch (error) {
+        console.error('Falha ao buscar usuários da credencial para notificação:', error);
+      }
+    }
+
+    if (byId.size === 0) {
+      const adminPool = await usersRepository.findAllActiveWithWhatsapp();
+      adminPool.forEach(addUser);
+    }
+
+    return Array.from(byId.values());
+  }
+
   async processPaidRecharge(recharge) {
-    const recipients = recharge.createdByUserId
-      ? [await usersRepository.findById(recharge.createdByUserId)].filter((user) => (
-          user &&
-          user.isActive &&
-          user.whatsappPhone
-        ))
-      : await usersRepository.findAllActiveWithWhatsapp();
+    const recipients = await this.resolveRecipients(recharge);
 
     if (recipients.length === 0) {
       return;
