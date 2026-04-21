@@ -9,7 +9,7 @@ Este README documenta as rotas para integração com outra aplicação.
  
 ## Healthcheck
 - `GET /health`  
- 
+  
 Exemplo:
 # Recarga Facil Frontend
 
