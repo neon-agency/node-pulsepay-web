@@ -24,14 +24,40 @@ class ServersRepository {
       custoCredito: Number(row.custo_credito ?? 0),
       estoque: Number(row.estoque ?? 0),
       estoqueAlerta: row.estoque_alerta != null ? Number(row.estoque_alerta) : null,
+      resellerCount: row.reseller_count != null ? Number(row.reseller_count) : 0,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
   }
 
   async findAll() {
-    const rows = await db('servers').select('*').orderBy('created_at', 'desc');
+    const resellerSubquery = db('credential_servers as cs')
+      .join('credentials as c', 'c.id', 'cs.credential_id')
+      .join('clients as cl', 'cl.id', 'c.client_id')
+      .where('cs.is_active', true)
+      .where('cl.tipo', 'revenda')
+      .groupBy('cs.server_id')
+      .select('cs.server_id', db.raw('COUNT(DISTINCT c.client_id) as reseller_count'));
+
+    const rows = await db('servers as s')
+      .leftJoin(resellerSubquery.as('rc'), 'rc.server_id', 's.id')
+      .select('s.*', db.raw('COALESCE(rc.reseller_count, 0) as reseller_count'))
+      .orderBy('s.created_at', 'desc');
     return rows.map((row) => this.mapRow(row));
+  }
+
+  async decrementStock(id, quantity) {
+    const delta = Math.max(0, Math.trunc(Number(quantity) || 0));
+    if (delta === 0) return null;
+
+    const [row] = await db('servers')
+      .where({ id })
+      .update({
+        estoque: db.raw('GREATEST(estoque - ?, 0)', [delta]),
+        updated_at: db.fn.now()
+      })
+      .returning('*');
+    return this.mapRow(row);
   }
 
   async findById(id) {

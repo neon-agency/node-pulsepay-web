@@ -168,6 +168,13 @@ class RechargeRequestsService {
     const updated = await this.getById(id);
 
     if (previous.paymentStatus !== 'pago' && updated.paymentStatus === 'pago') {
+      if (updated.serverId && updated.quantity) {
+        try {
+          await serversRepository.decrementStock(updated.serverId, updated.quantity);
+        } catch (error) {
+          console.error('Falha ao decrementar estoque do servidor:', error);
+        }
+      }
       await salesNotificationsService.processPaidRecharge(updated);
     }
 

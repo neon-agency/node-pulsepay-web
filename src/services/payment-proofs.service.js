@@ -8,6 +8,9 @@ const paymentProofAnalysisService = require('./payment-proof-analysis.service');
 const paymentProofNotificationsService = require('./payment-proof-notifications.service');
 const rechargeRequestsService = require('./recharge-requests.service');
 const integrationsService = require('./bot-integrations.service');
+const usersRepository = require('../repositories/users.repository');
+const http = require('http');
+const https = require('https');
 
 class PaymentProofsService {
   getStorageDir() {
@@ -45,8 +48,71 @@ class PaymentProofsService {
     }
   }
 
+  getZapServiceUrl() {
+    return process.env.GO_ZAP_SERVICE_URL || 'http://localhost:8080';
+  }
+
+  async zapRequest(url, { method = 'GET', payload } = {}) {
+    const protocol = url.startsWith('https') ? https : http;
+    const body = payload ? JSON.stringify(payload) : null;
+
+    return new Promise((resolve, reject) => {
+      const req = protocol.request(url, {
+        method,
+        headers: body
+          ? {
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(body)
+            }
+          : undefined
+      }, (res) => {
+        let responseBody = '';
+        res.on('data', (chunk) => {
+          responseBody += chunk;
+        });
+        res.on('end', () => {
+          if (res.statusCode >= 400) {
+            return reject(new Error(`Status ${res.statusCode}: ${responseBody}`));
+          }
+          resolve(responseBody);
+        });
+      });
+
+      req.on('error', reject);
+      if (body) req.write(body);
+      req.end();
+    });
+  }
+
+  async sendZapText(number, message) {
+    if (!number) return;
+    await this.zapRequest(`${this.getZapServiceUrl()}/api/send`, {
+      method: 'POST',
+      payload: { number, message }
+    });
+  }
+
+  async resolveOutcomeRecipients(recharge) {
+    const recipients = new Set();
+    if (recharge?.requestedByPhone) {
+      recipients.add(String(recharge.requestedByPhone).trim());
+    }
+    if (recharge?.createdByUserId) {
+      try {
+        const user = await usersRepository.findById(recharge.createdByUserId);
+        if (user?.whatsappPhone) {
+          recipients.add(String(user.whatsappPhone).trim());
+        }
+      } catch (error) {
+        console.error('Falha ao buscar usuario solicitante para notificacao:', error);
+      }
+    }
+    return Array.from(recipients).filter(Boolean);
+  }
+
   async notifyCustomerOutcome(recharge, decision) {
-    if (!recharge?.requestedByPhone) {
+    const recipients = await this.resolveOutcomeRecipients(recharge);
+    if (recipients.length === 0) {
       return;
     }
 
@@ -69,10 +135,17 @@ class PaymentProofsService {
           'Revise o pagamento e envie um novo comprovante para continuarmos a analise.'
         ].join('\n');
 
-    try {
-      await integrationsService.sendWhatsAppText(recharge.requestedByPhone, message);
-    } catch (error) {
-      console.error('Falha ao notificar cliente sobre resultado da validacao:', error);
+    for (const number of recipients) {
+      try {
+        await this.sendZapText(number, message);
+      } catch (error) {
+        console.error(`Falha ao notificar ${number} via GO-zap; tentando fallback Meta:`, error);
+        try {
+          await integrationsService.sendWhatsAppText(number, message);
+        } catch (fallbackError) {
+          console.error(`Fallback Meta tambem falhou para ${number}:`, fallbackError);
+        }
+      }
     }
   }
 
