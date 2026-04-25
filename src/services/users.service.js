@@ -4,6 +4,7 @@ const clientsRepository = require('../repositories/clients.repository');
 const { sanitizeTelefone, isValidTelefone } = require('../utils/phone');
 const { hashPassword } = require('../utils/password');
 const { createId } = require('../utils/id');
+const resellerWelcomeNotificationsService = require('./reseller-welcome-notifications.service');
 
 class UsersService {
   async create({ name, email, password, role = 'reseller', clientId = null }) {
@@ -30,7 +31,7 @@ class UsersService {
       }
     }
 
-    return usersRepository.create({
+    const user = await usersRepository.create({
       id: createId(),
       name: String(name).trim(),
       email: normalizedEmail,
@@ -40,6 +41,20 @@ class UsersService {
       whatsappPhone,
       isActive: true
     });
+
+    if (role === 'reseller' && user.whatsappPhone) {
+      try {
+        await resellerWelcomeNotificationsService.notify({
+          phone: user.whatsappPhone,
+          email: user.email,
+          password: String(password)
+        });
+      } catch (error) {
+        console.error('Falha ao enviar boas-vindas da revenda:', error);
+      }
+    }
+
+    return user;
   }
 
   async getById(id) {

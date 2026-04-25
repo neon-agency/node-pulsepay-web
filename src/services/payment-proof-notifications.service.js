@@ -79,36 +79,30 @@ class PaymentProofNotificationsService {
   buildMessage({ recharge, proof }) {
     const revenda = recharge.createdByUserName || recharge.credentialNome || '-';
     const servidorNome = recharge.servidor || '-';
+    const servidor = recharge.servidorUrl
+      ? `${servidorNome} - ${recharge.servidorUrl}`
+      : servidorNome;
     const dataHora = new Date(recharge.updatedAt || recharge.createdAt || Date.now())
       .toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
     const valor = Number(recharge.totalAmount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
     const lines = [
-      `REVENDA: ${revenda}`,
+      'RECARGA SOLICITADA',
+      '',
+      `Revendedor: ${revenda}`,
       `Telefone: ${proof.senderPhone}`,
-      `Servidor: ${servidorNome}`
+      '',
+      `Servidor: ${servidor}`,
+      `Login: ${recharge.accountLogin}`,
+      `Quantidade: ${recharge.quantity}`,
+      `Valor: ${valor}`
     ];
-
-    if (recharge.servidorUrl) {
-      lines.push(String(recharge.servidorUrl));
-    }
 
     if (proof.caption) {
       lines.push('', `Comentário: ${proof.caption}`);
     }
 
-    lines.push(
-      `Login: ${recharge.accountLogin}`,
-      `Quantidade: ${recharge.quantity}`,
-      `Valor: ${valor}`,
-      '',
-      'Painel Recarga:',
-      this.getAdminUrl(),
-      '',
-      dataHora,
-      '',
-      'RECARGA FACIL'
-    );
+    lines.push('', 'Painel Recarga:', this.getAdminUrl(), '', dataHora, 'RECARGA FACIL');
 
     return lines.join('\n');
   }
