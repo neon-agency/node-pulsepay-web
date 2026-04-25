@@ -93,6 +93,10 @@ class PaymentProofNotificationsService {
       lines.push(String(recharge.servidorUrl));
     }
 
+    if (proof.caption) {
+      lines.push('', `Comentário: ${proof.caption}`);
+    }
+
     lines.push(
       `Login: ${recharge.accountLogin}`,
       `Quantidade: ${recharge.quantity}`,

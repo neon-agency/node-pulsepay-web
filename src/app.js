@@ -7,6 +7,7 @@ const dashboardRoutes = require('./routes/dashboard.routes');
 const credentialsRoutes = require('./routes/credentials.routes');
 const rechargeRequestsRoutes = require('./routes/recharge-requests.routes');
 const botRoutes = require('./routes/bot.routes');
+const pixKeysRoutes = require('./routes/pix-keys.routes');
 const authMiddleware = require('./middlewares/auth.middleware');
 const errorHandler = require('./middlewares/error-handler');
 
@@ -28,6 +29,7 @@ app.use('/api/dashboard', authMiddleware, dashboardRoutes);
 app.use('/api/credentials', credentialsRoutes);
 app.use('/api/recharge-requests', rechargeRequestsRoutes);
 app.use('/api/bot', botRoutes);
+app.use('/api/pix-keys', pixKeysRoutes);
 
 app.use(errorHandler);
 

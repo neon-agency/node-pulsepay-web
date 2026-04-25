@@ -5,6 +5,7 @@ const credentialsRepository = require('../repositories/credentials.repository');
 const credentialServersRepository = require('../repositories/credential-servers.repository');
 const serversRepository = require('../repositories/servers.repository');
 const clientsRepository = require('../repositories/clients.repository');
+const pixKeysService = require('./pix-keys.service');
 const {
   normalizeCredentialName,
   sanitizeLast4,
@@ -111,13 +112,19 @@ class CredentialsService {
       ? null
       : String(loginRaw).trim();
 
+    const pixKeyIdRaw = payload?.pixKeyId;
+    const pixKeyId = pixKeyIdRaw === undefined || pixKeyIdRaw === null || String(pixKeyIdRaw).trim() === ''
+      ? null
+      : String(pixKeyIdRaw).trim();
+
     return {
       serverId,
       priceOverride: this.parsePrice(payload?.priceOverride),
       priceTiersOverride: this.parsePriceTiersOverride(payload?.priceTiersOverride),
       isActive: payload?.isActive !== false,
       email,
-      login
+      login,
+      pixKeyId
     };
   }
 
@@ -183,13 +190,23 @@ class CredentialsService {
     }));
   }
 
-  async replaceServers(credentialId, linksPayload) {
+  async replaceServers(credentialId, linksPayload, { userId = null } = {}) {
     await this.getById(credentialId);
     if (!Array.isArray(linksPayload)) {
       throw new AppError('O campo "servers" deve ser uma lista', 400);
     }
 
     const normalized = linksPayload.map((item) => this.normalizeLinkPayload(item));
+
+    if (userId) {
+      for (const item of normalized) {
+        if (!item.pixKeyId) continue;
+        const owned = await pixKeysService.findByIdForUser(userId, item.pixKeyId);
+        if (!owned) {
+          throw new AppError('Chave PIX inválida para o usuário', 400);
+        }
+      }
+    }
     const uniqueServerIds = new Set();
     for (const item of normalized) {
       if (uniqueServerIds.has(item.serverId)) {
@@ -213,7 +230,8 @@ class CredentialsService {
       priceTiersOverride: item.priceTiersOverride,
       isActive: item.isActive,
       email: item.email,
-      login: item.login
+      login: item.login,
+      pixKeyId: item.pixKeyId
     }));
 
     await credentialServersRepository.replaceAll(credentialId, rows);

@@ -14,5 +14,6 @@ rechargeRequestsRoutes.patch('/:id/payment-proof/review', authMiddleware, asyncH
 rechargeRequestsRoutes.post('/', authMiddleware, asyncHandler((req, res) => rechargeRequestsController.create(req, res)));
 rechargeRequestsRoutes.patch('/:id/payment', authMiddleware, asyncHandler((req, res) => rechargeRequestsController.updatePayment(req, res)));
 rechargeRequestsRoutes.patch('/:id/archive', authMiddleware, asyncHandler((req, res) => rechargeRequestsController.archive(req, res)));
+rechargeRequestsRoutes.patch('/:id/cancel', authMiddleware, asyncHandler((req, res) => rechargeRequestsController.cancel(req, res)));
 
 module.exports = rechargeRequestsRoutes;

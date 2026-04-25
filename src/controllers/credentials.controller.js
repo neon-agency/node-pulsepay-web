@@ -62,7 +62,9 @@ class CredentialsController {
 
   async replaceServers(req, res) {
     ensureAdmin(req);
-    const data = await credentialsService.replaceServers(req.params.id, req.body?.servers || []);
+    const data = await credentialsService.replaceServers(req.params.id, req.body?.servers || [], {
+      userId: req.user?.id || null
+    });
     return res.status(200).json(data);
   }
 

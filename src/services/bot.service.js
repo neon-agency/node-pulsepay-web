@@ -4,6 +4,7 @@ const credentialsService = require('./credentials.service');
 const rechargeRequestsService = require('./recharge-requests.service');
 const paymentProofsService = require('./payment-proofs.service');
 const usersRepository = require('../repositories/users.repository');
+const pixKeysService = require('./pix-keys.service');
 
 const STAGES = {
   START: 'START',
@@ -491,7 +492,12 @@ class BotService {
             });
 
             session.rechargeRequestId = rechargeRequest.id;
-            const { pix_key: pixKey } = integrationsService.getBotConfig();
+            const { pix_key: fallbackPixKey } = integrationsService.getBotConfig();
+            const resolvedPix = await pixKeysService.resolvePixKeyForLink(
+              session.credential?.id,
+              session.panel_id
+            );
+            const pixKey = resolvedPix?.chave || fallbackPixKey;
 
             await rechargeRequestsService.updatePayment(session.rechargeRequestId, {
               paymentStatus: 'pix_gerado',

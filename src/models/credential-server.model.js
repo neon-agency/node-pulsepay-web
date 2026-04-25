@@ -9,7 +9,8 @@ class CredentialServerModel {
     priceTiersOverride = [],
     isActive = true,
     email = null,
-    login = null
+    login = null,
+    pixKeyId = null
   }) {
     this.id = id;
     this.credentialId = credentialId;
@@ -19,6 +20,7 @@ class CredentialServerModel {
     this.isActive = isActive;
     this.email = email;
     this.login = login;
+    this.pixKeyId = pixKeyId;
   }
 }
 

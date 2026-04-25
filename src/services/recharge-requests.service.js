@@ -6,6 +6,7 @@ const serversRepository = require('../repositories/servers.repository');
 const rechargeRequestsRepository = require('../repositories/recharge-requests.repository');
 const paymentProofsRepository = require('../repositories/recharge-request-payment-proofs.repository');
 const salesNotificationsService = require('./sales-notifications.service');
+const rechargeCancellationNotificationsService = require('./recharge-cancellation-notifications.service');
 
 class RechargeRequestsService {
   resolveCatalogUnitPrice(link, quantity) {
@@ -187,6 +188,42 @@ class RechargeRequestsService {
       throw new AppError('Solicitação não encontrada', 404);
     }
     return rechargeRequestsRepository.archive(id);
+  }
+
+  async cancel(id, currentUser = null) {
+    const existing = await this.getById(id);
+
+    if (existing.paymentStatus === 'cancelado') {
+      return existing;
+    }
+
+    if (existing.paymentStatus === 'pago') {
+      throw new AppError('Solicitação paga não pode ser cancelada', 400);
+    }
+
+    if (existing.latestPaymentProof) {
+      throw new AppError('Solicitação com comprovante enviado não pode ser cancelada', 400);
+    }
+
+    await rechargeRequestsRepository.updatePayment(id, {
+      paymentStatus: 'cancelado',
+      paymentMethod: existing.paymentMethod,
+      pixCode: existing.pixCode,
+      pixTxid: existing.pixTxid
+    });
+
+    const updated = await this.getById(id);
+
+    try {
+      await rechargeCancellationNotificationsService.notifyCancelled({
+        recharge: updated,
+        cancelledBy: currentUser
+      });
+    } catch (error) {
+      console.error('Falha ao notificar cancelamento de solicitação:', error);
+    }
+
+    return updated;
   }
 }
 

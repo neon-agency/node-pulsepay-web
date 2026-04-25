@@ -1,9 +1,15 @@
 const rechargeRequestsService = require('../services/recharge-requests.service');
 const paymentProofsService = require('../services/payment-proofs.service');
 const credentialsRepository = require('../repositories/credentials.repository');
+const pixKeysService = require('../services/pix-keys.service');
 const AppError = require('../errors/app-error');
 
 const DEFAULT_PIX_KEY = process.env.PIX_KEY || 'b0944752-7136-49ef-920a-0d21a3aa4be5';
+
+async function resolvePixForRecharge(data) {
+  const resolved = await pixKeysService.resolvePixKeyForLink(data.credentialId, data.serverId);
+  return resolved?.chave || DEFAULT_PIX_KEY;
+}
 
 async function getResellerCredentialIds(clientId) {
   if (!clientId) return [];
@@ -65,10 +71,11 @@ class RechargeRequestsController {
     let data = await rechargeRequestsService.create(req.body || {}, req.user || null);
 
     if (req.user?.role === 'reseller') {
+      const pixKey = await resolvePixForRecharge(data);
       data = await rechargeRequestsService.updatePayment(data.id, {
         paymentStatus: 'pix_gerado',
         paymentMethod: 'pix',
-        pixCode: DEFAULT_PIX_KEY,
+        pixCode: pixKey,
         pixTxid: null
       });
     }
@@ -132,6 +139,12 @@ class RechargeRequestsController {
       throw new AppError('Acesso negado', 403);
     }
     const data = await rechargeRequestsService.archive(req.params.id);
+    return res.status(200).json(data);
+  }
+
+  async cancel(req, res) {
+    await ensureRechargeAccess(req, req.params.id);
+    const data = await rechargeRequestsService.cancel(req.params.id, req.user || null);
     return res.status(200).json(data);
   }
 }

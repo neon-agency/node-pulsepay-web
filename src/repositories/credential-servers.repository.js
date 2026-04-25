@@ -24,6 +24,7 @@ class CredentialServersRepository {
       isActive: Boolean(row.is_active),
       email: row.email ?? null,
       login: row.login ?? null,
+      pixKeyId: row.pix_key_id ?? null,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -102,7 +103,8 @@ class CredentialServersRepository {
         server_id: item.serverId,
         price_override: item.priceOverride,
         price_tiers_override: JSON.stringify(item.priceTiersOverride || []),
-        is_active: item.isActive
+        is_active: item.isActive,
+        pix_key_id: item.pixKeyId ?? null
       }));
 
       for (const item of payload) {
@@ -111,6 +113,7 @@ class CredentialServersRepository {
         delete item.priceOverride;
         delete item.priceTiersOverride;
         delete item.isActive;
+        delete item.pixKeyId;
       }
 
       await trx('credential_servers').insert(payload);
