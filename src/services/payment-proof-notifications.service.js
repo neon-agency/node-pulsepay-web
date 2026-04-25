@@ -87,7 +87,7 @@ class PaymentProofNotificationsService {
     const valor = Number(recharge.totalAmount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
     const lines = [
-      'RECARGA SOLICITADA',
+      '*RECARGA SOLICITADA*',
       '',
       `Revendedor: ${revenda}`,
       `Telefone: ${proof.senderPhone}`,
@@ -99,10 +99,10 @@ class PaymentProofNotificationsService {
     ];
 
     if (proof.caption) {
-      lines.push('', `Comentário: ${proof.caption}`);
+      lines.push('', '*Comentário:*', String(proof.caption));
     }
 
-    lines.push('', 'Painel Recarga:', this.getAdminUrl(), '', dataHora, 'RECARGA FACIL');
+    lines.push('', 'Painel Recarga:', this.getAdminUrl(), '', dataHora, '*RECARGA FÁCIL*');
 
     return lines.join('\n');
   }
@@ -201,10 +201,10 @@ class PaymentProofNotificationsService {
       }
 
       try {
+        await this.sendText(recipient.whatsappPhone, this.buildMessage({ recharge, proof }));
         if (mediaPayload) {
           await this.sendMedia(recipient.whatsappPhone, mediaPayload);
         }
-        await this.sendText(recipient.whatsappPhone, this.buildMessage({ recharge, proof }));
         await notificationsRepository.markSent(notification.id);
       } catch (error) {
         await notificationsRepository.markFailed(
