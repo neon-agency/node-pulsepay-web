@@ -54,10 +54,15 @@ class ResellerWelcomeNotificationsService {
 
   buildMessage({ email, password }) {
     return [
-      'Seja bem vindo a nossa equipe !',
-      `Painel: ${this.getPanelUrl()}`,
-      `Login: ${email}`,
-      `Senha: ${password}`
+      '*Seja bem vindo a nossa equipe !*',
+      '',
+      `*Login:* ${email}`,
+      `*Senha:* ${password}`,
+      '',
+      '*Painel de Recarga:*',
+      this.getPanelUrl(),
+      '',
+      '*RECARGA FÁCIL*'
     ].join('\n');
   }
 

@@ -104,7 +104,17 @@ class RechargeCancellationNotificationsService {
   }
 
   async notifyCancelled({ recharge, cancelledBy }) {
-    const recipients = await usersRepository.findAllAdminsWithWhatsapp();
+    const recipientMap = new Map();
+    const addRecipient = (user) => {
+      if (!user?.id || !user?.whatsappPhone) return;
+      recipientMap.set(user.id, user);
+    };
+
+    const admins = await usersRepository.findAllAdminsWithWhatsapp();
+    admins.forEach(addRecipient);
+    addRecipient(cancelledBy);
+
+    const recipients = Array.from(recipientMap.values());
     if (recipients.length === 0) return;
 
     const connected = await this.isZapConnected();
