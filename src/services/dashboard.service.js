@@ -54,7 +54,7 @@ class DashboardService {
         db.raw('COUNT(rr.id)::int as total_orders'),
         db.raw('MAX(rr.updated_at) as last_purchase_at')
       )
-      .orderBy('total_credits', 'desc')
+      .orderBy('total_amount', 'desc')
       .limit(normalizedLimit);
 
     if (cutoff) {
@@ -139,7 +139,7 @@ class DashboardService {
         db.raw('SUM(rr.total_amount)::numeric as total_amount'),
         db.raw('COUNT(rr.id)::int as total_orders')
       )
-      .orderBy('total_credits', 'desc');
+      .orderBy('total_amount', 'desc');
 
     if (cutoff) {
       query = query.where('rr.updated_at', '>=', cutoff);
