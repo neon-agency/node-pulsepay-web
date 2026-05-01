@@ -8,7 +8,7 @@ class UsersController {
     }
 
     const { name, email, password, clientId } = req.body || {};
-    const user = await usersService.create({ name, email, password, role: 'reseller', clientId });
+    const user = await usersService.create({ name, email, password, role: 'reseller', clientId, adminId: req.user.id });
     return res.status(201).json(usersService.toPublicUser(user));
   }
 }

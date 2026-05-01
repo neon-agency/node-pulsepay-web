@@ -11,6 +11,7 @@ class UsersRepository {
       passwordHash: row.password_hash,
       role: row.role,
       clientId: row.client_id ?? null,
+      adminId: row.admin_id ?? null,
       whatsappPhone: row.whatsapp_phone,
       isActive: Boolean(row.is_active),
       createdAt: row.created_at,
@@ -87,6 +88,7 @@ class UsersRepository {
         password_hash: payload.passwordHash,
         role: payload.role,
         client_id: payload.clientId || null,
+        admin_id: payload.adminId || null,
         whatsapp_phone: payload.whatsappPhone || null,
         is_active: payload.isActive ?? true
       })

@@ -7,7 +7,7 @@ const { createId } = require('../utils/id');
 const resellerWelcomeNotificationsService = require('./reseller-welcome-notifications.service');
 
 class UsersService {
-  async create({ name, email, password, role = 'reseller', clientId = null }) {
+  async create({ name, email, password, role = 'reseller', clientId = null, adminId = null }) {
     if (!name || !email || !password) {
       throw new AppError('Nome, email e senha são obrigatórios', 400);
     }
@@ -38,6 +38,7 @@ class UsersService {
       passwordHash: hashPassword(String(password)),
       role,
       clientId: clientId || null,
+      adminId: adminId || null,
       whatsappPhone,
       isActive: true
     });
