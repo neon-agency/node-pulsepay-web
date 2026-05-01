@@ -6,8 +6,15 @@ const { createId } = require('../utils/id');
 const VALID_SCHEMES = ['default', 'blue', 'purple', 'emerald', 'orange', 'rose', 'cyan', 'amber', 'custom'];
 const VALID_FONTS = ['default', 'inter', 'manrope', 'space-grotesk', 'poppins', 'dm-sans', 'roboto'];
 const HEX_RE = /^#?[0-9a-fA-F]{6}$/;
+// hostname válido (RFC 1123 simplificado): labels alfanuméricos com hífen, separados por ponto
+const DOMAIN_RE = /^(?!-)(?:[a-z0-9-]{1,63}(?<!-)\.)+[a-z]{2,}$/;
 
 class WhiteLabelService {
+  async getByDomain(domain) {
+    if (!domain) return null;
+    return whiteLabelRepository.findByDomain(domain);
+  }
+
   async getForUser(userId) {
     const user = await usersRepository.findById(userId);
     if (!user || !user.isActive) throw new AppError('Usuário não encontrado', 404);
@@ -25,7 +32,7 @@ class WhiteLabelService {
     return whiteLabelRepository.findByUserId(adminId);
   }
 
-  async upsert(userId, { systemName, logoUrl, colorScheme, fontFamily, customColor }) {
+  async upsert(userId, { systemName, logoUrl, colorScheme, fontFamily, customColor, domain }) {
     const user = await usersRepository.findById(userId);
     if (!user || !user.isActive) throw new AppError('Usuário não encontrado', 404);
     if (user.role !== 'admin') throw new AppError('Somente administradores podem configurar o white label', 403);
@@ -52,12 +59,31 @@ class WhiteLabelService {
       if (trimmed && trimmed.length > 160) throw new AppError('Nome do sistema muito longo (máx. 160 chars)', 400);
     }
 
+    let normalizedDomain = domain;
+    if (domain !== undefined) {
+      const stripped = String(domain ?? '').trim().toLowerCase();
+      if (stripped) {
+        if (!DOMAIN_RE.test(stripped)) {
+          throw new AppError('Domínio inválido. Use formato como pay.suamarca.com', 400);
+        }
+        // bloqueia colidir com domínio de outro usuário
+        const conflict = await whiteLabelRepository.findByDomain(stripped);
+        if (conflict && conflict.userId !== userId) {
+          throw new AppError('Este domínio já está em uso por outro gestor', 409);
+        }
+        normalizedDomain = stripped;
+      } else {
+        normalizedDomain = null;
+      }
+    }
+
     return whiteLabelRepository.upsert(userId, createId(), {
       systemName,
       logoUrl,
       colorScheme,
       fontFamily,
       customColor: customColor === undefined ? undefined : normalizedCustomColor,
+      domain: domain === undefined ? undefined : normalizedDomain,
     });
   }
 }

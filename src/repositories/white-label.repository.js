@@ -11,6 +11,7 @@ class WhiteLabelRepository {
       colorScheme: row.color_scheme,
       fontFamily: row.font_family ?? null,
       customColor: row.custom_color ?? null,
+      domain: row.domain ?? null,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -21,7 +22,17 @@ class WhiteLabelRepository {
     return this.mapRow(row);
   }
 
-  async upsert(userId, id, { systemName, logoUrl, colorScheme, fontFamily, customColor }) {
+  async findByDomain(domain) {
+    if (!domain) return null;
+    const normalized = String(domain).trim().toLowerCase();
+    if (!normalized) return null;
+    const row = await db('white_labels')
+      .whereRaw('LOWER(domain) = ?', [normalized])
+      .first();
+    return this.mapRow(row);
+  }
+
+  async upsert(userId, id, { systemName, logoUrl, colorScheme, fontFamily, customColor, domain }) {
     const existing = await db('white_labels').where({ user_id: userId }).first();
 
     if (existing) {
@@ -31,6 +42,7 @@ class WhiteLabelRepository {
       if (colorScheme !== undefined) updates.color_scheme = colorScheme;
       if (fontFamily !== undefined) updates.font_family = fontFamily || null;
       if (customColor !== undefined) updates.custom_color = customColor || null;
+      if (domain !== undefined) updates.domain = domain || null;
 
       const [row] = await db('white_labels')
         .where({ user_id: userId })
@@ -47,6 +59,7 @@ class WhiteLabelRepository {
       color_scheme: colorScheme ?? 'default',
       font_family: fontFamily || null,
       custom_color: customColor || null,
+      domain: domain || null,
     };
     const [row] = await db('white_labels').insert(insertPayload).returning('*');
     return this.mapRow(row);

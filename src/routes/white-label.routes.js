@@ -5,6 +5,13 @@ const whiteLabelService = require('../services/white-label.service');
 
 const whiteLabelRoutes = Router();
 
+// Público — usado pelo provider antes do login pra detectar marca via domínio
+whiteLabelRoutes.get('/by-domain', asyncHandler(async (req, res) => {
+  const domain = req.query?.domain;
+  const config = await whiteLabelService.getByDomain(domain);
+  return res.status(200).json({ whiteLabel: config });
+}));
+
 whiteLabelRoutes.get('/', authMiddleware, asyncHandler(async (req, res) => {
   const config = await whiteLabelService.getForUser(req.user.id);
   return res.status(200).json({ whiteLabel: config });

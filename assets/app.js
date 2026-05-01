@@ -16,6 +16,7 @@ const THEME_ICONS = {
 
 const DEMO_ALWAYS_PASS_LOGIN = "PULSEVIP";
 const STEPS = ["Login", "Dados", "Plano", "Pagar"];
+const CHECKOUT_PATHS = new Set(["/checkout", "/checkout/"]);
 const PLANS = [
   { id: "pix-test", name: "Degustacao", subtitle: "1 dia", price: 100 },
   { id: "monthly", name: "Mensal", subtitle: "30 dias", price: 3000 },
@@ -155,8 +156,99 @@ function actions(items) {
   `;
 }
 
+function renderLandingPage() {
+  const root = document.querySelector(".page-content");
+  root.innerHTML = `
+    <section class="landing-hero">
+      <div class="landing-copy">
+        <span class="hero-kicker">Sistema completo para provedores e revendedores</span>
+        <h1>Venda recargas no Pix com menos trabalho manual.</h1>
+        <p>
+          O PulsePay organiza clientes, planos, chaves Pix, comprovantes e renovacoes em uma experiencia simples para quem vende e para quem compra.
+        </p>
+        <div class="hero-actions">
+          <a class="button primary" href="https://wa.me/5500000000000?text=Quero%20uma%20demonstracao%20do%20PulsePay">Quero vender mais</a>
+          <a class="button ghost" href="/checkout">Ver demo do checkout</a>
+        </div>
+        <div class="trust-row" aria-label="Diferenciais principais">
+          <span>Pix integrado</span>
+          <span>Gestao de clientes</span>
+          <span>Automacao via WhatsApp</span>
+        </div>
+      </div>
+
+      <div class="product-preview" aria-label="Previa do painel PulsePay">
+        <div class="preview-topbar">
+          <span></span><span></span><span></span>
+        </div>
+        <div class="preview-metrics">
+          <div>
+            <small>Vendas hoje</small>
+            <strong>R$ 1.250</strong>
+          </div>
+          <div>
+            <small>Clientes ativos</small>
+            <strong>42</strong>
+          </div>
+        </div>
+        <div class="preview-list">
+          <div><span>Joao Silva</span><strong>Pix aprovado</strong></div>
+          <div><span>Maria Souza</span><strong>Plano renovado</strong></div>
+          <div><span>Carlos Lima</span><strong>Comprovante recebido</strong></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="landing-section compact-section" id="beneficios">
+      <div class="section-heading">
+        <span class="hero-kicker">Por que usar</span>
+        <h2>Mais controle para sua operacao, mais facilidade para o cliente.</h2>
+      </div>
+      <div class="feature-grid">
+        <article class="feature-card">
+          <div class="feature-icon">Pix</div>
+          <h3>Cobranca rapida</h3>
+          <p>Checkout responsivo com QR Code, copia e cola e acompanhamento do status do pagamento.</p>
+        </article>
+        <article class="feature-card">
+          <div class="feature-icon">CRM</div>
+          <h3>Clientes organizados</h3>
+          <p>Cadastre clientes, acompanhe planos e veja quem precisa renovar sem depender de planilhas soltas.</p>
+        </article>
+        <article class="feature-card">
+          <div class="feature-icon">Bot</div>
+          <h3>Atendimento automatizado</h3>
+          <p>Fluxos de recarga e avisos pelo WhatsApp ajudam a reduzir tarefas repetitivas.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="landing-section split-section" id="como-funciona">
+      <div class="section-heading">
+        <span class="hero-kicker">Fluxo simples</span>
+        <h2>Da escolha do plano ao Pix confirmado.</h2>
+      </div>
+      <div class="timeline">
+        <div><span>01</span><p>Cliente informa a conta ou fala com o bot.</p></div>
+        <div><span>02</span><p>Escolhe o plano ideal e gera o Pix.</p></div>
+        <div><span>03</span><p>Gestor acompanha recargas, comprovantes e resultados.</p></div>
+      </div>
+    </section>
+
+    <section class="landing-cta">
+      <div>
+        <span class="hero-kicker">Pronto para vender melhor</span>
+        <h2>Coloque suas recargas em um sistema com cara profissional.</h2>
+        <p>Fale com a gente e veja como o PulsePay pode entrar na sua operacao.</p>
+      </div>
+      <a class="button primary" href="https://wa.me/5500000000000?text=Quero%20contratar%20o%20PulsePay">Chamar no WhatsApp</a>
+    </section>
+  `;
+}
+
 function renderSteps() {
   const root = document.querySelector("#steps");
+  if (!root) return;
   root.innerHTML = STEPS.map((label, index) => {
     const number = index + 1;
     const status = state.step === number ? "active" : state.step > number ? "complete" : "";
@@ -385,6 +477,11 @@ function openStepPay() {
 function renderPanel() {
   const panel = document.querySelector("#panel-content");
   const heroCard = document.querySelector(".hero-card");
+
+  if (!CHECKOUT_PATHS.has(state.route) && state.route !== "/gestor") {
+    renderLandingPage();
+    return;
+  }
   
   if (state.route === "/gestor") {
     heroCard.style.display = "none";
@@ -582,8 +679,15 @@ function syncTheme() {
 }
 
 function render() {
+  document.body.dataset.page = CHECKOUT_PATHS.has(state.route)
+    ? "checkout"
+    : state.route === "/gestor"
+      ? "gestor"
+      : "landing";
+
   if (state.route === "/gestor") {
-    document.querySelector("#steps").innerHTML = "";
+    const steps = document.querySelector("#steps");
+    if (steps) steps.innerHTML = "";
   } else {
     renderSteps();
   }
