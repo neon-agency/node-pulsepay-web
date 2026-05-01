@@ -5,6 +5,7 @@ const { createId } = require('../utils/id');
 
 const VALID_SCHEMES = ['default', 'blue', 'purple', 'emerald', 'orange', 'rose', 'cyan', 'amber', 'custom'];
 const VALID_FONTS = ['default', 'inter', 'manrope', 'space-grotesk', 'poppins', 'dm-sans', 'roboto'];
+const VALID_LOGIN_LAYOUTS = ['split-left', 'split-right', 'centered'];
 const HEX_RE = /^#?[0-9a-fA-F]{6}$/;
 // hostname válido (RFC 1123 simplificado): labels alfanuméricos com hífen, separados por ponto
 const DOMAIN_RE = /^(?!-)(?:[a-z0-9-]{1,63}(?<!-)\.)+[a-z]{2,}$/;
@@ -32,7 +33,10 @@ class WhiteLabelService {
     return whiteLabelRepository.findByUserId(adminId);
   }
 
-  async upsert(userId, { systemName, logoUrl, colorScheme, fontFamily, customColor, domain }) {
+  async upsert(userId, {
+    systemName, logoUrl, colorScheme, fontFamily, customColor, domain,
+    loginLayout, loginTitle, loginSubtitle, loginTagline, loginFeatures,
+  }) {
     const user = await usersRepository.findById(userId);
     if (!user || !user.isActive) throw new AppError('Usuário não encontrado', 404);
     if (user.role !== 'admin') throw new AppError('Somente administradores podem configurar o white label', 403);
@@ -77,6 +81,24 @@ class WhiteLabelService {
       }
     }
 
+    if (loginLayout && !VALID_LOGIN_LAYOUTS.includes(loginLayout)) {
+      throw new AppError(`Layout de login inválido. Use: ${VALID_LOGIN_LAYOUTS.join(', ')}`, 400);
+    }
+
+    let normalizedFeatures = loginFeatures;
+    if (loginFeatures !== undefined) {
+      if (loginFeatures === null || (Array.isArray(loginFeatures) && loginFeatures.length === 0)) {
+        normalizedFeatures = null;
+      } else if (!Array.isArray(loginFeatures)) {
+        throw new AppError('login_features deve ser um array', 400);
+      } else {
+        normalizedFeatures = loginFeatures
+          .map((f) => String(f ?? '').trim())
+          .filter(Boolean)
+          .slice(0, 5);
+      }
+    }
+
     return whiteLabelRepository.upsert(userId, createId(), {
       systemName,
       logoUrl,
@@ -84,6 +106,11 @@ class WhiteLabelService {
       fontFamily,
       customColor: customColor === undefined ? undefined : normalizedCustomColor,
       domain: domain === undefined ? undefined : normalizedDomain,
+      loginLayout,
+      loginTitle,
+      loginSubtitle,
+      loginTagline,
+      loginFeatures: normalizedFeatures,
     });
   }
 }
