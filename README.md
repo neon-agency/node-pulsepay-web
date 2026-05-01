@@ -10,7 +10,7 @@ Este README documenta as rotas para integração com outra aplicação.
 ## Healthcheck c
 - `GET /health`  
    
-Exemplo:
+Exemplo: 
 # Recarga Facil Frontend 
    
 Projeto web responsivo para intermediação de pagamentos Pix.
