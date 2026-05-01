@@ -9,6 +9,8 @@ class WhiteLabelRepository {
       systemName: row.system_name ?? null,
       logoUrl: row.logo_url ?? null,
       colorScheme: row.color_scheme,
+      fontFamily: row.font_family ?? null,
+      customColor: row.custom_color ?? null,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -19,7 +21,7 @@ class WhiteLabelRepository {
     return this.mapRow(row);
   }
 
-  async upsert(userId, id, { systemName, logoUrl, colorScheme }) {
+  async upsert(userId, id, { systemName, logoUrl, colorScheme, fontFamily, customColor }) {
     const existing = await db('white_labels').where({ user_id: userId }).first();
 
     if (existing) {
@@ -27,6 +29,8 @@ class WhiteLabelRepository {
       if (systemName !== undefined) updates.system_name = systemName || null;
       if (logoUrl !== undefined) updates.logo_url = logoUrl || null;
       if (colorScheme !== undefined) updates.color_scheme = colorScheme;
+      if (fontFamily !== undefined) updates.font_family = fontFamily || null;
+      if (customColor !== undefined) updates.custom_color = customColor || null;
 
       const [row] = await db('white_labels')
         .where({ user_id: userId })
@@ -35,15 +39,16 @@ class WhiteLabelRepository {
       return this.mapRow(row);
     }
 
-    const [row] = await db('white_labels')
-      .insert({
-        id,
-        user_id: userId,
-        system_name: systemName || null,
-        logo_url: logoUrl || null,
-        color_scheme: colorScheme ?? 'default',
-      })
-      .returning('*');
+    const insertPayload = {
+      id,
+      user_id: userId,
+      system_name: systemName || null,
+      logo_url: logoUrl || null,
+      color_scheme: colorScheme ?? 'default',
+      font_family: fontFamily || null,
+      custom_color: customColor || null,
+    };
+    const [row] = await db('white_labels').insert(insertPayload).returning('*');
     return this.mapRow(row);
   }
 }

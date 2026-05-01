@@ -50,6 +50,14 @@ class UsersRepository {
     return rows.map((row) => this.mapRow(row));
   }
 
+  async findFirstAdmin() {
+    const row = await db('users')
+      .where({ is_active: true, role: 'admin' })
+      .orderBy('created_at', 'asc')
+      .first();
+    return this.mapRow(row);
+  }
+
   async findByClientId(clientId) {
     const row = await db('users').where({ client_id: clientId }).first();
     return this.mapRow(row);

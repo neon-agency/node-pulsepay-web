@@ -15,8 +15,14 @@ whiteLabelRoutes.patch('/', authMiddleware, asyncHandler(async (req, res) => {
     return res.status(403).json({ message: 'Acesso negado' });
   }
 
-  const { systemName, logoUrl, colorScheme } = req.body ?? {};
-  const whiteLabel = await whiteLabelService.upsert(req.user.id, { systemName, logoUrl, colorScheme });
+  const { systemName, logoUrl, colorScheme, fontFamily, customColor } = req.body ?? {};
+  const whiteLabel = await whiteLabelService.upsert(req.user.id, {
+    systemName,
+    logoUrl,
+    colorScheme,
+    fontFamily,
+    customColor,
+  });
   return res.status(200).json({ whiteLabel });
 }));
 
