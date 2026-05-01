@@ -334,6 +334,14 @@ class DashboardService {
     return this._computeSummary({ clients, servers, allRecharges });
   }
 
+  async rankingPage({ period = 'all', limit } = {}) {
+    const [resellers, servers] = await Promise.all([
+      this.resellersRanking({ period, limit }),
+      this.serversRanking({ period, limit })
+    ]);
+    return { resellers, servers };
+  }
+
   async pageBundle() {
     // Lightweight projections — dashboard summary only needs `tipo` + `servidor_id` from clients
     // and `server_id`, `quantity`, `total_amount`, `payment_status`, `created_at` from recharges.

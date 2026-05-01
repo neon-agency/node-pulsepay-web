@@ -6,6 +6,7 @@ const dashboardRoutes = Router();
 
 dashboardRoutes.get('/', asyncHandler((req, res) => dashboardController.summary(req, res)));
 dashboardRoutes.get('/page', asyncHandler((req, res) => dashboardController.page(req, res)));
+dashboardRoutes.get('/ranking', asyncHandler((req, res) => dashboardController.ranking(req, res)));
 dashboardRoutes.get(
   '/resellers-ranking',
   asyncHandler((req, res) => dashboardController.resellersRanking(req, res))

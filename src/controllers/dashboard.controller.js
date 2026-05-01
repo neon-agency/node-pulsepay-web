@@ -35,6 +35,12 @@ class DashboardController {
     const data = await dashboardService.pageBundle();
     return res.status(200).json(data);
   }
+
+  async ranking(req, res) {
+    const { period, limit } = req.query || {};
+    const data = await dashboardService.rankingPage({ period, limit });
+    return res.status(200).json(data);
+  }
 }
 
 module.exports = new DashboardController();
