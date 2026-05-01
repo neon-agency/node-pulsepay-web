@@ -171,48 +171,35 @@ class DashboardService {
   async finances({ period = 'all' } = {}) {
     const cutoff = period && period !== 'all' ? startOf(period) : null;
 
-    const servers = await serversRepository.findAll();
-    const custoByServerId = new Map(servers.map((s) => [String(s.id), Number(s.custoCredito ?? 0)]));
-
-    let query = db('recharge_requests')
-      .where('payment_status', 'pago')
-      .select('server_id', 'quantity', 'total_amount', 'created_at', 'updated_at');
+    // Single SQL: GROUP BY server, JOIN slim servers for name + custo. liquido computed in SQL.
+    let query = db('recharge_requests as rr')
+      .innerJoin('servers as s', 's.id', 'rr.server_id')
+      .where('rr.payment_status', 'pago')
+      .groupBy('s.id', 's.servidor', 's.custo_credito')
+      .select(
+        's.id as server_id',
+        's.servidor',
+        db.raw('COALESCE(SUM(rr.quantity), 0)::int as total_credits'),
+        db.raw('COALESCE(SUM(rr.total_amount), 0)::numeric as total_bruto'),
+        db.raw('COALESCE(SUM(rr.total_amount) - SUM(rr.quantity) * s.custo_credito, 0)::numeric as total_liquido'),
+        db.raw('COUNT(rr.id)::int as total_orders')
+      )
+      .orderBy('total_bruto', 'desc');
 
     if (cutoff) {
-      query = query.where('updated_at', '>=', cutoff);
+      query = query.where('rr.updated_at', '>=', cutoff);
     }
 
-    const paidRecharges = await query;
+    const rows = await query;
 
-    const byServer = new Map();
-    for (const recharge of paidRecharges) {
-      const sid = String(recharge.server_id);
-      const custo = custoByServerId.get(sid) ?? 0;
-      const bruto = Number(recharge.total_amount) || 0;
-      const qty = Number(recharge.quantity) || 0;
-      const liquido = bruto - qty * custo;
-      const current = byServer.get(sid) || {
-        serverId: recharge.server_id,
-        servidor: servers.find((s) => String(s.id) === sid)?.servidor || '—',
-        totalCredits: 0,
-        totalBruto: 0,
-        totalLiquido: 0,
-        totalOrders: 0
-      };
-      current.totalCredits += qty;
-      current.totalBruto += bruto;
-      current.totalLiquido += liquido;
-      current.totalOrders += 1;
-      byServer.set(sid, current);
-    }
-
-    const servidores = Array.from(byServer.values())
-      .map((row) => ({
-        ...row,
-        totalBruto: toMoney(row.totalBruto),
-        totalLiquido: toMoney(row.totalLiquido)
-      }))
-      .sort((a, b) => b.totalBruto - a.totalBruto);
+    const servidores = rows.map((row) => ({
+      serverId: row.server_id,
+      servidor: row.servidor,
+      totalCredits: Number(row.total_credits) || 0,
+      totalBruto: toMoney(Number(row.total_bruto) || 0),
+      totalLiquido: toMoney(Number(row.total_liquido) || 0),
+      totalOrders: Number(row.total_orders) || 0
+    }));
 
     const totals = servidores.reduce(
       (acc, row) => {

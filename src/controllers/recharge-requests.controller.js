@@ -59,12 +59,41 @@ class RechargeRequestsController {
     if (req.user?.role === 'reseller' && req.user?.clientId) {
       credentialIds = await getResellerCredentialIds(req.user.clientId);
       if (credentialIds.length === 0) {
-        return res.status(200).json({ rechargeRequests: [], servers: [] });
+        return res.status(200).json({ rechargeRequests: [], nextCursor: null });
       }
     }
 
-    const data = await rechargeRequestsService.pageBundle({ credentialIds });
-    return res.status(200).json(data);
+    const { limit, cursor, search, status, archived } = req.query || {};
+    let parsedCursor = null;
+    if (typeof cursor === 'string' && cursor.trim()) {
+      try {
+        const decoded = Buffer.from(cursor, 'base64').toString('utf8');
+        const parsed = JSON.parse(decoded);
+        if (parsed?.createdAt && parsed?.id) {
+          parsedCursor = { createdAt: parsed.createdAt, id: parsed.id };
+        }
+      } catch (_err) {
+        parsedCursor = null;
+      }
+    }
+
+    const data = await rechargeRequestsService.pageBundle({
+      credentialIds,
+      limit,
+      cursor: parsedCursor,
+      search: typeof search === 'string' ? search : null,
+      status: typeof status === 'string' ? status : null,
+      archived: archived === 'true' || archived === true
+    });
+
+    const encodedNextCursor = data.nextCursor
+      ? Buffer.from(JSON.stringify(data.nextCursor), 'utf8').toString('base64')
+      : null;
+
+    return res.status(200).json({
+      rechargeRequests: data.rechargeRequests,
+      nextCursor: encodedNextCursor
+    });
   }
 
   async getById(req, res) {

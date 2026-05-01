@@ -38,6 +38,94 @@ class RechargeRequestsRepository {
     };
   }
 
+  mapListPageRow(row) {
+    if (!row) return null;
+    return {
+      id: row.id,
+      serverId: row.server_id,
+      serverName: row.servidor,
+      serverUrl: row.servidor_url ?? null,
+      accountLogin: row.account_login,
+      credentialLast4: row.credential_last4,
+      quantity: Number(row.quantity),
+      unitPrice: Number(row.unit_price),
+      totalAmount: Number(row.total_amount),
+      paymentStatus: row.payment_status,
+      archived: Boolean(row.archived),
+      createdAt: row.created_at,
+      createdByUserName: row.created_by_user_name ?? null,
+      createdByUserEmail: row.created_by_user_email ?? null
+    };
+  }
+
+  async findAllForListPage({
+    credentialIds,
+    limit = 50,
+    cursor = null,
+    search = null,
+    status = null,
+    archived = false
+  } = {}) {
+    let query = db('recharge_requests as rr')
+      .innerJoin('servers as s', 's.id', 'rr.server_id')
+      .innerJoin('credentials as c', 'c.id', 'rr.credential_id')
+      .leftJoin('users as u', 'u.id', 'rr.created_by_user_id')
+      .select(
+        'rr.id',
+        'rr.server_id',
+        'rr.account_login',
+        'rr.quantity',
+        'rr.unit_price',
+        'rr.total_amount',
+        'rr.payment_status',
+        'rr.archived',
+        'rr.created_at',
+        's.servidor',
+        's.url as servidor_url',
+        'c.last4 as credential_last4',
+        'u.name as created_by_user_name',
+        'u.email as created_by_user_email'
+      )
+      .where('rr.archived', archived === true)
+      .orderBy([
+        { column: 'rr.created_at', order: 'desc' },
+        { column: 'rr.id', order: 'desc' }
+      ])
+      .limit(Math.min(Math.max(Number(limit) || 50, 1), 200));
+
+    if (Array.isArray(credentialIds) && credentialIds.length > 0) {
+      query = query.whereIn('rr.credential_id', credentialIds);
+    }
+
+    if (status && status !== 'all') {
+      query = query.where('rr.payment_status', status);
+    }
+
+    if (search && String(search).trim()) {
+      const term = `%${String(search).trim().toLowerCase()}%`;
+      query = query.where((qb) => {
+        qb.whereRaw('LOWER(rr.id::text) LIKE ?', [term])
+          .orWhereRaw('LOWER(rr.account_login) LIKE ?', [term])
+          .orWhereRaw('LOWER(s.servidor) LIKE ?', [term])
+          .orWhereRaw('LOWER(c.last4) LIKE ?', [term])
+          .orWhereRaw('LOWER(COALESCE(u.name, \'\')) LIKE ?', [term])
+          .orWhereRaw('LOWER(COALESCE(u.email, \'\')) LIKE ?', [term]);
+      });
+    }
+
+    if (cursor && cursor.createdAt && cursor.id) {
+      query = query.where((qb) => {
+        qb.where('rr.created_at', '<', cursor.createdAt)
+          .orWhere((qb2) => {
+            qb2.where('rr.created_at', cursor.createdAt).andWhere('rr.id', '<', cursor.id);
+          });
+      });
+    }
+
+    const rows = await query;
+    return rows.map((row) => this.mapListPageRow(row));
+  }
+
   async findAll({ credentialIds } = {}) {
     let query = db('recharge_requests as rr')
       .innerJoin('credentials as c', 'c.id', 'rr.credential_id')

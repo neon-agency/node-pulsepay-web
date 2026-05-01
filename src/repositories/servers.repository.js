@@ -25,6 +25,7 @@ class ServersRepository {
       estoque: Number(row.estoque ?? 0),
       estoqueAlerta: row.estoque_alerta != null ? Number(row.estoque_alerta) : null,
       resellerCount: row.reseller_count != null ? Number(row.reseller_count) : 0,
+      clientCount: row.client_count != null ? Number(row.client_count) : 0,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -39,9 +40,19 @@ class ServersRepository {
       .groupBy('cs.server_id')
       .select('cs.server_id', db.raw('COUNT(DISTINCT c.client_id) as reseller_count'));
 
+    const clientCountSubquery = db('clients')
+      .whereNotNull('servidor_id')
+      .groupBy('servidor_id')
+      .select('servidor_id', db.raw('COUNT(*) as client_count'));
+
     const rows = await db('servers as s')
       .leftJoin(resellerSubquery.as('rc'), 'rc.server_id', 's.id')
-      .select('s.*', db.raw('COALESCE(rc.reseller_count, 0) as reseller_count'))
+      .leftJoin(clientCountSubquery.as('cc'), 'cc.servidor_id', 's.id')
+      .select(
+        's.*',
+        db.raw('COALESCE(rc.reseller_count, 0) as reseller_count'),
+        db.raw('COALESCE(cc.client_count, 0) as client_count')
+      )
       .orderBy('s.created_at', 'desc');
     return rows.map((row) => this.mapRow(row));
   }

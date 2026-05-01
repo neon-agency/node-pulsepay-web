@@ -54,12 +54,58 @@ class RechargeRequestsService {
     return this.enrichWithPaymentProof(rows);
   }
 
-  async pageBundle({ credentialIds } = {}) {
-    const [rechargeRequests, servers] = await Promise.all([
-      this.list({ credentialIds: credentialIds || null }),
-      serversRepository.findAll()
-    ]);
-    return { rechargeRequests, servers };
+  async pageBundle({
+    credentialIds,
+    limit,
+    cursor,
+    search,
+    status,
+    archived
+  } = {}) {
+    const effectiveLimit = Math.min(Math.max(Number(limit) || 50, 1), 200);
+
+    const rows = await rechargeRequestsRepository.findAllForListPage({
+      credentialIds: credentialIds || null,
+      limit: effectiveLimit,
+      cursor,
+      search,
+      status,
+      archived
+    });
+
+    if (rows.length === 0) {
+      return { rechargeRequests: [], nextCursor: null };
+    }
+
+    const proofs = await paymentProofsRepository.findLatestByRechargeRequestIds(
+      rows.map((row) => row.id)
+    );
+    const proofMap = new Map(proofs.map((proof) => [proof.rechargeRequestId, proof]));
+
+    const rechargeRequests = rows.map((row) => {
+      const proof = proofMap.get(row.id);
+      return {
+        ...row,
+        latestPaymentProof: proof
+          ? {
+              id: proof.id,
+              reviewStatus: proof.reviewStatus,
+              caption: proof.caption ?? null,
+              analysisSummary: proof.analysisSummary ?? null,
+              analysisConfidence: proof.analysisConfidence ?? null,
+              createdAt: proof.createdAt
+            }
+          : null
+      };
+    });
+
+    const last = rows[rows.length - 1];
+    const nextCursor =
+      rows.length === effectiveLimit
+        ? { createdAt: last.createdAt, id: last.id }
+        : null;
+
+    return { rechargeRequests, nextCursor };
   }
 
   async getById(id) {
