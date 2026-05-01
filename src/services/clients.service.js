@@ -3,6 +3,8 @@ const ClientModel = require('../models/client.model');
 const clientsRepository = require('../repositories/clients.repository');
 const serversRepository = require('../repositories/servers.repository');
 const usersRepository = require('../repositories/users.repository');
+const credentialsRepository = require('../repositories/credentials.repository');
+const pixKeysRepository = require('../repositories/pix-keys.repository');
 const { sanitizeTelefone, isValidTelefone } = require('../utils/phone');
 
 function toDateOnlyString(dateInput) {
@@ -132,6 +134,17 @@ class ClientsService {
     }
 
     return clientsRepository.findAll({ tipo });
+  }
+
+  async resellersPageBundle({ userId } = {}) {
+    const [servers, resellers, credentials, pixKeys] = await Promise.all([
+      serversRepository.findAll(),
+      clientsRepository.findAll({ tipo: 'revenda' }),
+      credentialsRepository.findAll({ clientId: null }),
+      userId ? pixKeysRepository.findAllByUser(userId) : Promise.resolve([])
+    ]);
+
+    return { servers, resellers, credentials, pixKeys };
   }
 
   async getById(id) {

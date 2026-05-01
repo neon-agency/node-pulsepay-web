@@ -6,6 +6,11 @@ class ClientsController {
     return res.status(200).json(data);
   }
 
+  async resellersPage(req, res) {
+    const data = await clientsService.resellersPageBundle({ userId: req.user?.id || null });
+    return res.status(200).json(data);
+  }
+
   async getById(req, res) {
     const data = await clientsService.getById(req.params.id);
     return res.status(200).json(data);
