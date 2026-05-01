@@ -33,39 +33,39 @@ class ClientsRepository {
       new Set(rows.map((row) => String(row.id || '').trim()).filter(Boolean))
     );
 
+    const [serverRows, credentialLinkRows] = await Promise.all([
+      serverIds.length
+        ? db('servers').select('id', 'url').whereIn('id', serverIds)
+        : Promise.resolve([]),
+      clientIds.length && serverIds.length
+        ? db('credential_servers as cs')
+            .innerJoin('credentials as cred', 'cred.id', 'cs.credential_id')
+            .select(
+              'cred.client_id as client_id',
+              'cs.server_id as server_id',
+              'cs.login as login',
+              'cs.email as senha',
+              'cs.created_at as created_at'
+            )
+            .whereIn('cred.client_id', clientIds)
+            .whereIn('cs.server_id', serverIds)
+            .orderBy('cs.created_at', 'desc')
+        : Promise.resolve([])
+    ]);
+
     const serverUrlById = new Map();
-    if (serverIds.length) {
-      const serverRows = await db('servers')
-        .select('id', 'url')
-        .whereIn('id', serverIds);
-      for (const serverRow of serverRows) {
-        serverUrlById.set(String(serverRow.id), serverRow.url ?? null);
-      }
+    for (const serverRow of serverRows) {
+      serverUrlById.set(String(serverRow.id), serverRow.url ?? null);
     }
 
     const loginByClientServer = new Map();
-    if (clientIds.length && serverIds.length) {
-      const credentialLinkRows = await db('credential_servers as cs')
-        .innerJoin('credentials as cred', 'cred.id', 'cs.credential_id')
-        .select(
-          'cred.client_id as client_id',
-          'cs.server_id as server_id',
-          'cs.login as login',
-          'cs.email as senha',
-          'cs.created_at as created_at'
-        )
-        .whereIn('cred.client_id', clientIds)
-        .whereIn('cs.server_id', serverIds)
-        .orderBy('cs.created_at', 'desc');
-
-      for (const link of credentialLinkRows) {
-        const key = `${String(link.client_id)}::${String(link.server_id)}`;
-        if (!loginByClientServer.has(key)) {
-          loginByClientServer.set(key, {
-            login: link.login ?? null,
-            senha: link.senha ?? null
-          });
-        }
+    for (const link of credentialLinkRows) {
+      const key = `${String(link.client_id)}::${String(link.server_id)}`;
+      if (!loginByClientServer.has(key)) {
+        loginByClientServer.set(key, {
+          login: link.login ?? null,
+          senha: link.senha ?? null
+        });
       }
     }
 

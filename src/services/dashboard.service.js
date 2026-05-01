@@ -1,7 +1,6 @@
 const db = require('../database/knex');
 const clientsRepository = require('../repositories/clients.repository');
 const serversRepository = require('../repositories/servers.repository');
-const rechargeRequestsService = require('./recharge-requests.service');
 
 function toMoney(value) {
   return Number.isFinite(value) ? Number(value.toFixed(2)) : 0;
@@ -335,20 +334,25 @@ class DashboardService {
     return this._computeSummary({ clients, servers, allRecharges });
   }
 
-  async pageBundle({ credentialIds } = {}) {
-    const [servers, clients, rechargeRequests] = await Promise.all([
+  async pageBundle() {
+    // Lightweight projections — dashboard summary only needs `tipo` + `servidor_id` from clients
+    // and `server_id`, `quantity`, `total_amount`, `payment_status`, `created_at` from recharges.
+    // Full clients / recharge_requests are NOT consumed by the dashboard page.
+    const [servers, clients, allRecharges] = await Promise.all([
       serversRepository.findAll(),
-      clientsRepository.findAll(),
-      rechargeRequestsService.list({ credentialIds: credentialIds || null })
+      db('clients').select('id', 'tipo', db.raw('servidor_id as servidor')),
+      db('recharge_requests').select(
+        'server_id',
+        'quantity',
+        'total_amount',
+        'payment_status',
+        'created_at'
+      )
     ]);
 
-    const dashboard = this._computeSummary({
-      clients,
-      servers,
-      allRecharges: rechargeRequests
-    });
+    const dashboard = this._computeSummary({ clients, servers, allRecharges });
 
-    return { servers, clients, rechargeRequests, dashboard };
+    return { servers, dashboard };
   }
 }
 

@@ -180,9 +180,24 @@ class RechargeRequestPaymentProofsRepository {
       return [];
     }
 
+    // Skip file_content_base64 + raw_analysis_json (large blobs) — caller only needs metadata.
     const rows = await db('recharge_request_payment_proofs as p')
       .distinctOn('p.recharge_request_id')
-      .select('p.*')
+      .select(
+        'p.id',
+        'p.recharge_request_id',
+        'p.review_status',
+        'p.caption',
+        'p.analysis_summary',
+        'p.analysis_confidence',
+        'p.extracted_amount',
+        'p.matches_expected_amount',
+        'p.matches_pix_identifier',
+        'p.reviewed_by_user_id',
+        'p.reviewed_at',
+        'p.created_at',
+        'p.updated_at'
+      )
       .whereIn('p.recharge_request_id', rechargeRequestIds)
       .orderBy([
         { column: 'p.recharge_request_id', order: 'asc' },
