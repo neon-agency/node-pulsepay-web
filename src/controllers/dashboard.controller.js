@@ -30,6 +30,11 @@ class DashboardController {
     const data = await dashboardService.finances({ period });
     return res.status(200).json(data);
   }
+
+  async page(_req, res) {
+    const data = await dashboardService.pageBundle();
+    return res.status(200).json(data);
+  }
 }
 
 module.exports = new DashboardController();

@@ -1,6 +1,7 @@
 const db = require('../database/knex');
 const clientsRepository = require('../repositories/clients.repository');
 const serversRepository = require('../repositories/servers.repository');
+const rechargeRequestsService = require('./recharge-requests.service');
 
 function toMoney(value) {
   return Number.isFinite(value) ? Number(value.toFixed(2)) : 0;
@@ -228,30 +229,32 @@ class DashboardService {
     return { totals, servidores };
   }
 
-  async summary() {
-    const [clients, servers] = await Promise.all([
-      clientsRepository.findAll(),
-      serversRepository.findAll()
-    ]);
+  _normalizeRecharge(r) {
+    return {
+      paymentStatus: r.paymentStatus ?? r.payment_status ?? null,
+      createdAt: r.createdAt ?? r.created_at ?? null,
+      serverId: r.serverId ?? r.server_id ?? null,
+      quantity: Number(r.quantity ?? 0),
+      totalAmount: Number(r.totalAmount ?? r.total_amount ?? 0)
+    };
+  }
+
+  _computeSummary({ clients, servers, allRecharges }) {
+    const normalized = allRecharges.map((r) => this._normalizeRecharge(r));
 
     const totalRevenda = clients.filter((c) => String(c.tipo || '').toLowerCase() === 'revenda').length;
 
     const custoByServerId = new Map(servers.map((s) => [String(s.id), Number(s.custoCredito ?? 0)]));
 
-    const paidRecharges = await db('recharge_requests')
-      .where({ payment_status: 'pago' })
-      .select('server_id', 'quantity', 'total_amount', 'created_at');
-
+    const paidRecharges = normalized.filter((r) => r.paymentStatus === 'pago');
     const startOfDay = startOf('dia');
-    const todayRecharges = await db('recharge_requests')
-      .where('created_at', '>=', startOfDay)
-      .select('payment_status');
+    const todayRecharges = normalized.filter((r) => r.createdAt && new Date(r.createdAt) >= startOfDay);
 
     const recargasDoDia = todayRecharges.reduce(
       (acc, r) => {
         acc.solicitadas += 1;
-        if (r.payment_status === 'pago') acc.aprovadas += 1;
-        else if (r.payment_status === 'pendente_pagamento' || r.payment_status === 'pix_gerado') acc.faltas += 1;
+        if (r.paymentStatus === 'pago') acc.aprovadas += 1;
+        else if (r.paymentStatus === 'pendente_pagamento' || r.paymentStatus === 'pix_gerado') acc.faltas += 1;
         return acc;
       },
       { solicitadas: 0, aprovadas: 0, faltas: 0 }
@@ -263,11 +266,11 @@ class DashboardService {
 
     for (const period of periods) {
       const cutoff = startOf(period);
-      const subset = paidRecharges.filter((r) => new Date(r.created_at) >= cutoff);
-      const totalQty = subset.reduce((acc, r) => acc + Number(r.quantity), 0);
+      const subset = paidRecharges.filter((r) => new Date(r.createdAt) >= cutoff);
+      const totalQty = subset.reduce((acc, r) => acc + r.quantity, 0);
       const totalLucro = subset.reduce((acc, r) => {
-        const custo = custoByServerId.get(String(r.server_id)) ?? 0;
-        return acc + (Number(r.total_amount) - Number(r.quantity) * custo);
+        const custo = custoByServerId.get(String(r.serverId)) ?? 0;
+        return acc + (r.totalAmount - r.quantity * custo);
       }, 0);
       creditosVendidos[period] = totalQty;
       lucro[period] = toMoney(totalLucro);
@@ -283,9 +286,9 @@ class DashboardService {
     }, {});
 
     const lucroByServerId = paidRecharges.reduce((acc, r) => {
-      const sid = String(r.server_id);
+      const sid = String(r.serverId);
       const custo = custoByServerId.get(sid) ?? 0;
-      acc[sid] = (acc[sid] || 0) + (Number(r.total_amount) - Number(r.quantity) * custo);
+      acc[sid] = (acc[sid] || 0) + (r.totalAmount - r.quantity * custo);
       return acc;
     }, {});
 
@@ -320,6 +323,32 @@ class DashboardService {
       distribuicaoPorServidor,
       alertasEstoque
     };
+  }
+
+  async summary() {
+    const [clients, servers, allRecharges] = await Promise.all([
+      clientsRepository.findAll(),
+      serversRepository.findAll(),
+      db('recharge_requests').select('server_id', 'quantity', 'total_amount', 'created_at', 'payment_status')
+    ]);
+
+    return this._computeSummary({ clients, servers, allRecharges });
+  }
+
+  async pageBundle({ credentialIds } = {}) {
+    const [servers, clients, rechargeRequests] = await Promise.all([
+      serversRepository.findAll(),
+      clientsRepository.findAll(),
+      rechargeRequestsService.list({ credentialIds: credentialIds || null })
+    ]);
+
+    const dashboard = this._computeSummary({
+      clients,
+      servers,
+      allRecharges: rechargeRequests
+    });
+
+    return { servers, clients, rechargeRequests, dashboard };
   }
 }
 

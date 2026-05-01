@@ -53,6 +53,20 @@ class RechargeRequestsController {
     return res.status(200).json(data);
   }
 
+  async page(req, res) {
+    let credentialIds = null;
+
+    if (req.user?.role === 'reseller' && req.user?.clientId) {
+      credentialIds = await getResellerCredentialIds(req.user.clientId);
+      if (credentialIds.length === 0) {
+        return res.status(200).json({ rechargeRequests: [], servers: [] });
+      }
+    }
+
+    const data = await rechargeRequestsService.pageBundle({ credentialIds });
+    return res.status(200).json(data);
+  }
+
   async getById(req, res) {
     const data = await ensureRechargeAccess(req, req.params.id);
     return res.status(200).json(data);

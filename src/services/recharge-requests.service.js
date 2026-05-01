@@ -54,6 +54,14 @@ class RechargeRequestsService {
     return this.enrichWithPaymentProof(rows);
   }
 
+  async pageBundle({ credentialIds } = {}) {
+    const [rechargeRequests, servers] = await Promise.all([
+      this.list({ credentialIds: credentialIds || null }),
+      serversRepository.findAll()
+    ]);
+    return { rechargeRequests, servers };
+  }
+
   async getById(id) {
     const row = await rechargeRequestsRepository.findById(id);
     if (!row) throw new AppError('Solicitação de recarga não encontrada', 404);
