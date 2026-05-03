@@ -7,7 +7,7 @@ class ResellerWelcomeNotificationsService {
   }
 
   getPanelUrl() {
-    return process.env.PULSEPAY_PANEL_URL || process.env.PULSEPAY_ADMIN_URL || 'https://nano-gerenciador.vercel.app/';
+    return process.env.PULSEPAY_PANEL_URL || process.env.PULSEPAY_ADMIN_URL || 'https://pulsepaypainel.vercel.app/';
   }
 
   async makeRequest(url, { method = 'GET', payload } = {}) {
@@ -19,9 +19,9 @@ class ResellerWelcomeNotificationsService {
         method,
         headers: body
           ? {
-              'Content-Type': 'application/json',
-              'Content-Length': Buffer.byteLength(body)
-            }
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(body)
+          }
           : undefined
       }, (res) => {
         let responseBody = '';
