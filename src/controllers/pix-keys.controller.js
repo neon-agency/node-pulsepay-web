@@ -28,7 +28,7 @@ class PixKeysController {
   async remove(req, res) {
     const userId = this.requireUser(req);
     await pixKeysService.remove(userId, req.params.id);
-    return res.status(204).send();
+    return res.status(200).json({ message: 'Chave PIX deletada com sucesso' });
   }
 }
 
