@@ -6,7 +6,7 @@ Este README documenta as rotas para integração com outra aplicação.
 ## Base URL  
 - Produção: `https://pulsepay.webutilidades.online` 
 - Local: `http://localhost:3001`  
-   
+    
 ## Healthcheck   
 - `GET /health`  
    
