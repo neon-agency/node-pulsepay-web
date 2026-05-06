@@ -169,6 +169,7 @@ class AuthService {
       role: user.role,
       clientId: user.clientId || null,
       whatsappPhone: user.whatsappPhone,
+      tokenVersion: typeof user.tokenVersion === 'number' ? user.tokenVersion : 0,
       exp
     });
     const expiresAt = new Date(exp).toISOString();
@@ -204,6 +205,7 @@ class AuthService {
       role: payload.role || 'admin',
       clientId: payload.clientId || null,
       whatsappPhone: payload.whatsappPhone || null,
+      tokenVersion: typeof payload.tokenVersion === 'number' ? payload.tokenVersion : 0,
       expiresAt: new Date(payload.exp).toISOString()
     };
   }

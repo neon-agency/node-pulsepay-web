@@ -146,6 +146,7 @@ class ClientsService {
       db('credentials as c')
         .innerJoin('credential_servers as cs', 'cs.credential_id', 'c.id')
         .whereNotNull('c.client_id')
+        .where('cs.is_active', true)
         .groupBy('c.client_id')
         .select('c.client_id as clientId')
         .count({ count: db.raw('DISTINCT cs.server_id') }),

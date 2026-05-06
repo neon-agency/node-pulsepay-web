@@ -54,6 +54,19 @@ class RechargeRequestsService {
     return this.enrichWithPaymentProof(rows);
   }
 
+  async countPending({ credentialIds } = {}) {
+    const db = require('../database/knex');
+    const query = db('recharge_requests as rr')
+      .innerJoin('recharge_request_payment_proofs as p', 'p.recharge_request_id', 'rr.id')
+      .where('p.review_status', 'pending_review')
+      .where('rr.archived', false);
+    if (Array.isArray(credentialIds) && credentialIds.length) {
+      query.whereIn('rr.credential_id', credentialIds);
+    }
+    const result = await query.countDistinct({ count: 'rr.id' }).first();
+    return Number(result?.count || 0);
+  }
+
   async pageBundle({
     credentialIds,
     limit,

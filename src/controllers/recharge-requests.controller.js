@@ -190,6 +190,18 @@ class RechargeRequestsController {
     const data = await rechargeRequestsService.cancel(req.params.id, req.user || null);
     return res.status(200).json(data);
   }
+
+  async pendingCount(req, res) {
+    let credentialIds = null;
+    if (req.user?.role === 'reseller' && req.user?.clientId) {
+      credentialIds = await getResellerCredentialIds(req.user.clientId);
+      if (credentialIds.length === 0) {
+        return res.status(200).json({ count: 0 });
+      }
+    }
+    const count = await rechargeRequestsService.countPending({ credentialIds });
+    return res.status(200).json({ count });
+  }
 }
 
 module.exports = new RechargeRequestsController();

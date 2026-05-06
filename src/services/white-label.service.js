@@ -30,7 +30,15 @@ class WhiteLabelService {
 
     if (!adminId) return null;
 
-    return whiteLabelRepository.findByUserId(adminId);
+    const config = await whiteLabelRepository.findByUserId(adminId);
+    const adminUser = await usersRepository.findById(adminId);
+    const adminWhatsappPhone = adminUser?.whatsappPhone || null;
+
+    if (!config) {
+      return adminWhatsappPhone ? { adminWhatsappPhone } : null;
+    }
+
+    return { ...config, adminWhatsappPhone };
   }
 
   async upsert(userId, {

@@ -7,8 +7,8 @@ const { hashPassword } = require('../utils/password');
 const { createId } = require('../utils/id');
 const resellerWelcomeNotificationsService = require('./reseller-welcome-notifications.service');
 
-function generateRandomPassword(length = 10) {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+function generateRandomPassword(length = 6) {
+  const alphabet = '0123456789';
   let pwd = '';
   const bytes = crypto.randomBytes(length);
   for (let i = 0; i < length; i += 1) {
@@ -42,7 +42,7 @@ class UsersService {
       }
     }
 
-    const plainPassword = password ? String(password) : generateRandomPassword(10);
+    const plainPassword = password ? String(password) : generateRandomPassword(6);
     if (plainPassword.length < 6) {
       throw new AppError('Senha deve ter ao menos 6 caracteres', 400);
     }
@@ -100,7 +100,7 @@ class UsersService {
 
     let plainPassword = user.welcomePassword;
     if (!plainPassword) {
-      plainPassword = generateRandomPassword(10);
+      plainPassword = generateRandomPassword(6);
       await usersRepository.updateProfile(user.id, {
         passwordHash: hashPassword(plainPassword),
         welcomePassword: plainPassword
@@ -140,7 +140,7 @@ class UsersService {
 
     let plainPassword = user.welcomePassword;
     if (!plainPassword) {
-      plainPassword = generateRandomPassword(10);
+      plainPassword = generateRandomPassword(6);
       await usersRepository.updateProfile(user.id, {
         passwordHash: hashPassword(plainPassword),
         welcomePassword: plainPassword
@@ -179,6 +179,7 @@ class UsersService {
     }
 
     const updated = await usersRepository.setActive(user.id, Boolean(isActive));
+    await usersRepository.bumpTokenVersion(user.id);
     return this.toPublicUser(updated);
   }
 
@@ -206,6 +207,7 @@ class UsersService {
       passwordHash: hashPassword(pwd),
       welcomePassword: pwd
     });
+    await usersRepository.bumpTokenVersion(user.id);
     return this.toPublicUser(updated);
   }
 
@@ -265,6 +267,9 @@ class UsersService {
     }
 
     const updated = await usersRepository.updateProfile(userId, updates);
+    if (password !== undefined) {
+      await usersRepository.bumpTokenVersion(userId);
+    }
     return this.toPublicUser(updated);
   }
 

@@ -14,6 +14,7 @@ class UsersRepository {
       adminId: row.admin_id ?? null,
       whatsappPhone: row.whatsapp_phone,
       welcomePassword: row.welcome_password ?? null,
+      tokenVersion: typeof row.token_version === 'number' ? row.token_version : 0,
       isActive: Boolean(row.is_active),
       createdAt: row.created_at,
       updatedAt: row.updated_at
@@ -139,6 +140,18 @@ class UsersRepository {
       .where({ id })
       .update({
         is_active: Boolean(isActive),
+        updated_at: db.fn.now()
+      })
+      .returning('*');
+
+    return this.mapRow(row);
+  }
+
+  async bumpTokenVersion(id) {
+    const [row] = await db('users')
+      .where({ id })
+      .update({
+        token_version: db.raw('token_version + 1'),
         updated_at: db.fn.now()
       })
       .returning('*');
