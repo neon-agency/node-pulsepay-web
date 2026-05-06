@@ -11,7 +11,7 @@ Este README documenta as rotas para integração com outra aplicação.
 - `GET /health`  
    
 Exemplo: 
-# Recarga Facil Frontend 
+# Recarga Facil Frontend  
     
 Projeto web responsivo para intermediação de pagamentos Pix.
  
