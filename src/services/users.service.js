@@ -19,8 +19,8 @@ function generateRandomPassword(length = 10) {
 
 class UsersService {
   async create({ name, email, password, role = 'reseller', clientId = null, adminId = null }) {
-    if (!name || !email || !password) {
-      throw new AppError('Nome, email e senha são obrigatórios', 400);
+    if (!name || !email) {
+      throw new AppError('Nome e email são obrigatórios', 400);
     }
 
     const normalizedEmail = String(email).trim().toLowerCase();
@@ -42,15 +42,21 @@ class UsersService {
       }
     }
 
+    const plainPassword = password ? String(password) : generateRandomPassword(10);
+    if (plainPassword.length < 6) {
+      throw new AppError('Senha deve ter ao menos 6 caracteres', 400);
+    }
+
     const user = await usersRepository.create({
       id: createId(),
       name: String(name).trim(),
       email: normalizedEmail,
-      passwordHash: hashPassword(String(password)),
+      passwordHash: hashPassword(plainPassword),
       role,
       clientId: clientId || null,
       adminId: adminId || null,
       whatsappPhone,
+      welcomePassword: plainPassword,
       isActive: true
     });
 
@@ -59,7 +65,7 @@ class UsersService {
         await resellerWelcomeNotificationsService.notify({
           phone: user.whatsappPhone,
           email: user.email,
-          password: String(password)
+          password: plainPassword
         });
       } catch (error) {
         console.error('Falha ao enviar boas-vindas da revenda:', error);
@@ -92,13 +98,19 @@ class UsersService {
       throw new AppError('WhatsApp não está conectado. Conecte o serviço e tente novamente.', 503);
     }
 
-    const newPassword = generateRandomPassword(10);
-    await usersRepository.updateProfile(user.id, { passwordHash: hashPassword(newPassword) });
+    let plainPassword = user.welcomePassword;
+    if (!plainPassword) {
+      plainPassword = generateRandomPassword(10);
+      await usersRepository.updateProfile(user.id, {
+        passwordHash: hashPassword(plainPassword),
+        welcomePassword: plainPassword
+      });
+    }
 
     const sent = await resellerWelcomeNotificationsService.notify({
       phone: user.whatsappPhone,
       email: user.email,
-      password: newPassword
+      password: plainPassword
     });
 
     if (!sent) {
@@ -126,13 +138,19 @@ class UsersService {
       throw new AppError('Revenda sem WhatsApp cadastrado', 400);
     }
 
-    const newPassword = generateRandomPassword(10);
-    await usersRepository.updateProfile(user.id, { passwordHash: hashPassword(newPassword) });
+    let plainPassword = user.welcomePassword;
+    if (!plainPassword) {
+      plainPassword = generateRandomPassword(10);
+      await usersRepository.updateProfile(user.id, {
+        passwordHash: hashPassword(plainPassword),
+        welcomePassword: plainPassword
+      });
+    }
 
     return {
       phone: user.whatsappPhone,
       email: user.email,
-      password: newPassword
+      password: plainPassword
     };
   }
 
@@ -185,7 +203,8 @@ class UsersService {
     }
 
     const updated = await usersRepository.updateProfile(user.id, {
-      passwordHash: hashPassword(pwd)
+      passwordHash: hashPassword(pwd),
+      welcomePassword: pwd
     });
     return this.toPublicUser(updated);
   }
@@ -238,6 +257,7 @@ class UsersService {
       const pwd = String(password);
       if (pwd.length < 6) throw new AppError('Senha deve ter ao menos 6 caracteres', 400);
       updates.passwordHash = hashPassword(pwd);
+      updates.welcomePassword = pwd;
     }
 
     if (Object.keys(updates).length === 0) {

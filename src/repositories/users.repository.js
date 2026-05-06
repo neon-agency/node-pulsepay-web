@@ -13,6 +13,7 @@ class UsersRepository {
       clientId: row.client_id ?? null,
       adminId: row.admin_id ?? null,
       whatsappPhone: row.whatsapp_phone,
+      welcomePassword: row.welcome_password ?? null,
       isActive: Boolean(row.is_active),
       createdAt: row.created_at,
       updatedAt: row.updated_at
@@ -98,6 +99,7 @@ class UsersRepository {
         client_id: payload.clientId || null,
         admin_id: payload.adminId || null,
         whatsapp_phone: payload.whatsappPhone || null,
+        welcome_password: payload.welcomePassword || null,
         is_active: payload.isActive ?? true
       })
       .returning('*');
@@ -117,11 +119,12 @@ class UsersRepository {
     return this.mapRow(row);
   }
 
-  async updateProfile(id, { name, email, passwordHash }) {
+  async updateProfile(id, { name, email, passwordHash, welcomePassword }) {
     const updates = { updated_at: db.fn.now() };
     if (name !== undefined) updates.name = name;
     if (email !== undefined) updates.email = email;
     if (passwordHash !== undefined) updates.password_hash = passwordHash;
+    if (welcomePassword !== undefined) updates.welcome_password = welcomePassword;
 
     const [row] = await db('users')
       .where({ id })
