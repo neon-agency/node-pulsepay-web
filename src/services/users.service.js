@@ -145,6 +145,51 @@ class UsersService {
     return this.toPublicUser(user);
   }
 
+  async setActiveByClientId({ adminId, clientId, isActive }) {
+    if (!adminId) throw new AppError('Acesso negado', 403);
+    if (!clientId) throw new AppError('Revenda inválida', 400);
+
+    const user = await usersRepository.findByClientId(clientId);
+    if (!user) {
+      throw new AppError('Usuário da revenda não encontrado', 404);
+    }
+    if (user.role !== 'reseller') {
+      throw new AppError('Usuário não é uma revenda', 400);
+    }
+    if (user.adminId && user.adminId !== adminId) {
+      throw new AppError('Acesso negado', 403);
+    }
+
+    const updated = await usersRepository.setActive(user.id, Boolean(isActive));
+    return this.toPublicUser(updated);
+  }
+
+  async updatePasswordByClientId({ adminId, clientId, password }) {
+    if (!adminId) throw new AppError('Acesso negado', 403);
+    if (!clientId) throw new AppError('Revenda inválida', 400);
+
+    const pwd = String(password ?? '');
+    if (pwd.length < 6) {
+      throw new AppError('Senha deve ter ao menos 6 caracteres', 400);
+    }
+
+    const user = await usersRepository.findByClientId(clientId);
+    if (!user) {
+      throw new AppError('Usuário da revenda não encontrado', 404);
+    }
+    if (user.role !== 'reseller') {
+      throw new AppError('Usuário não é uma revenda', 400);
+    }
+    if (user.adminId && user.adminId !== adminId) {
+      throw new AppError('Acesso negado', 403);
+    }
+
+    const updated = await usersRepository.updateProfile(user.id, {
+      passwordHash: hashPassword(pwd)
+    });
+    return this.toPublicUser(updated);
+  }
+
   async updateWhatsappPhone(userId, rawPhone) {
     const normalized = sanitizeTelefone(rawPhone);
     if (!normalized || !isValidTelefone(normalized)) {
@@ -210,7 +255,8 @@ class UsersService {
       email: user.email,
       role: user.role,
       clientId: user.clientId || null,
-      whatsappPhone: user.whatsappPhone || null
+      whatsappPhone: user.whatsappPhone || null,
+      isActive: Boolean(user.isActive)
     };
   }
 }

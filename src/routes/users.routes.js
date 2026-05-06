@@ -8,5 +8,7 @@ const usersRoutes = Router();
 usersRoutes.post('/', authMiddleware, asyncHandler((req, res) => usersController.create(req, res)));
 usersRoutes.post('/resend-welcome/:clientId', authMiddleware, asyncHandler((req, res) => usersController.resendWelcome(req, res)));
 usersRoutes.post('/welcome-link/:clientId', authMiddleware, asyncHandler((req, res) => usersController.welcomeLink(req, res)));
+usersRoutes.patch('/active/:clientId', authMiddleware, asyncHandler((req, res) => usersController.setActive(req, res)));
+usersRoutes.patch('/password/:clientId', authMiddleware, asyncHandler((req, res) => usersController.updatePassword(req, res)));
 
 module.exports = usersRoutes;

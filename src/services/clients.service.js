@@ -138,7 +138,7 @@ class ClientsService {
   }
 
   async resellersPageBundle({ userId } = {}) {
-    const [servers, resellers, credentials, pixKeys, serverCountRows] = await Promise.all([
+    const [servers, resellers, credentials, pixKeys, serverCountRows, userRows] = await Promise.all([
       serversRepository.findAll(),
       clientsRepository.findAll({ tipo: 'revenda' }),
       credentialsRepository.findAll({ clientId: null }),
@@ -148,16 +148,26 @@ class ClientsService {
         .whereNotNull('c.client_id')
         .groupBy('c.client_id')
         .select('c.client_id as clientId')
-        .count({ count: db.raw('DISTINCT cs.server_id') })
+        .count({ count: db.raw('DISTINCT cs.server_id') }),
+      db('users')
+        .whereNotNull('client_id')
+        .where({ role: 'reseller' })
+        .select('client_id as clientId', 'is_active as isActive')
     ]);
 
     const serverCountByClient = new Map(
       serverCountRows.map((row) => [row.clientId, Number(row.count) || 0])
     );
+    const userActiveByClient = new Map(
+      userRows.map((row) => [row.clientId, Boolean(row.isActive)])
+    );
 
     const resellersWithCount = resellers.map((reseller) => ({
       ...reseller,
-      serverCount: serverCountByClient.get(reseller.id) || 0
+      serverCount: serverCountByClient.get(reseller.id) || 0,
+      userIsActive: userActiveByClient.has(reseller.id)
+        ? userActiveByClient.get(reseller.id)
+        : null
     }));
 
     return { servers, resellers: resellersWithCount, credentials, pixKeys };

@@ -130,6 +130,18 @@ class UsersRepository {
 
     return this.mapRow(row);
   }
+
+  async setActive(id, isActive) {
+    const [row] = await db('users')
+      .where({ id })
+      .update({
+        is_active: Boolean(isActive),
+        updated_at: db.fn.now()
+      })
+      .returning('*');
+
+    return this.mapRow(row);
+  }
 }
 
 module.exports = new UsersRepository();
