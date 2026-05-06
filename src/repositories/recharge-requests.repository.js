@@ -233,6 +233,10 @@ class RechargeRequestsRepository {
     return this.mapRow(row);
   }
 
+  async deleteById(id) {
+    return db('recharge_requests').where({ id }).del();
+  }
+
   async findPaid() {
     const rows = await db('recharge_requests as rr')
       .innerJoin('credentials as c', 'c.id', 'rr.credential_id')

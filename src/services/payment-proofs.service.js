@@ -389,6 +389,15 @@ class PaymentProofsService {
       });
     }
 
+    if (normalizedDecision === 'rejected' && recharge.paymentStatus !== 'cancelado') {
+      await rechargeRequestsService.updatePayment(rechargeRequestId, {
+        paymentStatus: 'cancelado',
+        paymentMethod: recharge.paymentMethod,
+        pixCode: recharge.pixCode,
+        pixTxid: recharge.pixTxid
+      });
+    }
+
     const updatedRecharge = await rechargeRequestsRepository.findById(rechargeRequestId);
     await this.notifyCustomerOutcome(updatedRecharge, normalizedDecision);
 

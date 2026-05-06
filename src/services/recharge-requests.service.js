@@ -257,6 +257,18 @@ class RechargeRequestsService {
     return rechargeRequestsRepository.archive(id);
   }
 
+  async delete(id) {
+    const existing = await rechargeRequestsRepository.findById(id);
+    if (!existing) {
+      throw new AppError('Solicitação não encontrada', 404);
+    }
+    if (existing.paymentStatus === 'pago') {
+      throw new AppError('Solicitação paga não pode ser excluída', 400);
+    }
+    await rechargeRequestsRepository.deleteById(id);
+    return { id };
+  }
+
   async cancel(id, currentUser = null) {
     const existing = await this.getById(id);
 

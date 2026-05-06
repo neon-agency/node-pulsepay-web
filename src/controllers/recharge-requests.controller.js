@@ -185,6 +185,14 @@ class RechargeRequestsController {
     return res.status(200).json(data);
   }
 
+  async delete(req, res) {
+    if (req.user?.type !== 'internal' && req.user?.role !== 'admin') {
+      throw new AppError('Acesso negado', 403);
+    }
+    const data = await rechargeRequestsService.delete(req.params.id);
+    return res.status(200).json(data);
+  }
+
   async cancel(req, res) {
     await ensureRechargeAccess(req, req.params.id);
     const data = await rechargeRequestsService.cancel(req.params.id, req.user || null);
