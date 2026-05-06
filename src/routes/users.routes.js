@@ -6,5 +6,6 @@ const asyncHandler = require('../utils/async-handler');
 const usersRoutes = Router();
 
 usersRoutes.post('/', authMiddleware, asyncHandler((req, res) => usersController.create(req, res)));
+usersRoutes.post('/resend-welcome/:clientId', authMiddleware, asyncHandler((req, res) => usersController.resendWelcome(req, res)));
 
 module.exports = usersRoutes;

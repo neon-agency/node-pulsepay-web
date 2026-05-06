@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const AppError = require('../errors/app-error');
 const usersRepository = require('../repositories/users.repository');
 const clientsRepository = require('../repositories/clients.repository');
@@ -5,6 +6,16 @@ const { sanitizeTelefone, isValidTelefone } = require('../utils/phone');
 const { hashPassword } = require('../utils/password');
 const { createId } = require('../utils/id');
 const resellerWelcomeNotificationsService = require('./reseller-welcome-notifications.service');
+
+function generateRandomPassword(length = 10) {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  let pwd = '';
+  const bytes = crypto.randomBytes(length);
+  for (let i = 0; i < length; i += 1) {
+    pwd += alphabet[bytes[i] % alphabet.length];
+  }
+  return pwd;
+}
 
 class UsersService {
   async create({ name, email, password, role = 'reseller', clientId = null, adminId = null }) {
@@ -56,6 +67,45 @@ class UsersService {
     }
 
     return user;
+  }
+
+  async resendWelcome({ adminId, clientId }) {
+    if (!adminId) throw new AppError('Acesso negado', 403);
+    if (!clientId) throw new AppError('Revenda inválida', 400);
+
+    const user = await usersRepository.findByClientId(clientId);
+    if (!user || !user.isActive) {
+      throw new AppError('Usuário da revenda não encontrado', 404);
+    }
+    if (user.role !== 'reseller') {
+      throw new AppError('Usuário não é uma revenda', 400);
+    }
+    if (user.adminId && user.adminId !== adminId) {
+      throw new AppError('Acesso negado', 403);
+    }
+    if (!user.whatsappPhone) {
+      throw new AppError('Revenda sem WhatsApp cadastrado', 400);
+    }
+
+    const connected = await resellerWelcomeNotificationsService.isZapConnected();
+    if (!connected) {
+      throw new AppError('WhatsApp não está conectado. Conecte o serviço e tente novamente.', 503);
+    }
+
+    const newPassword = generateRandomPassword(10);
+    await usersRepository.updateProfile(user.id, { passwordHash: hashPassword(newPassword) });
+
+    const sent = await resellerWelcomeNotificationsService.notify({
+      phone: user.whatsappPhone,
+      email: user.email,
+      password: newPassword
+    });
+
+    if (!sent) {
+      throw new AppError('Falha ao enviar mensagem de boas-vindas', 502);
+    }
+
+    return { sent: true };
   }
 
   async getById(id) {

@@ -30,7 +30,7 @@ class PaymentProofNotificationsService {
   }
 
   getAdminUrl() {
-    return process.env.PULSEPAY_ADMIN_URL || process.env.INTERNAL_API_BASE_URL || 'https://nano-gerenciador.vercel.app';
+    return process.env.PULSEPAY_PANEL_URL || process.env.PULSEPAY_ADMIN_URL || process.env.INTERNAL_API_BASE_URL || 'https://pulsepaypainel.vercel.app/';
   }
 
   async makeRequest(url, { method = 'GET', payload } = {}) {
@@ -79,30 +79,34 @@ class PaymentProofNotificationsService {
   buildMessage({ recharge, proof }) {
     const revenda = recharge.createdByUserName || recharge.credentialNome || '-';
     const servidorNome = recharge.servidor || '-';
-    const servidor = recharge.servidorUrl
-      ? `${servidorNome} - ${recharge.servidorUrl}`
-      : servidorNome;
     const dataHora = new Date(recharge.updatedAt || recharge.createdAt || Date.now())
       .toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
     const valor = Number(recharge.totalAmount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
     const lines = [
-      '*RECARGA SOLICITADA*',
+      'RECARGA SOLICITADA',
       '',
       `Revendedor: ${revenda}`,
       `Telefone: ${proof.senderPhone}`,
       '',
-      `Servidor: ${servidor}`,
+      `Servidor: ${servidorNome} `
+    ];
+
+    if (recharge.servidorUrl) {
+      lines.push('', recharge.servidorUrl, '');
+    }
+
+    lines.push(
       `Login: ${recharge.accountLogin}`,
       `Quantidade: ${recharge.quantity}`,
       `Valor: ${valor}`
-    ];
+    );
 
     if (proof.caption) {
-      lines.push('', '*Comentário:*', String(proof.caption));
+      lines.push('', 'Comentário:', String(proof.caption));
     }
 
-    lines.push('', 'Painel Recarga:', this.getAdminUrl(), '', dataHora, '*RECARGA FÁCIL*');
+    lines.push('', 'Painel Recarga:', this.getAdminUrl(), '', dataHora, 'RECARGA FÁCIL');
 
     return lines.join('\n');
   }

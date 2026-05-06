@@ -5,6 +5,7 @@ const serversRepository = require('../repositories/servers.repository');
 const usersRepository = require('../repositories/users.repository');
 const credentialsRepository = require('../repositories/credentials.repository');
 const pixKeysRepository = require('../repositories/pix-keys.repository');
+const db = require('../database/knex');
 const { sanitizeTelefone, isValidTelefone } = require('../utils/phone');
 
 function toDateOnlyString(dateInput) {
@@ -137,14 +138,29 @@ class ClientsService {
   }
 
   async resellersPageBundle({ userId } = {}) {
-    const [servers, resellers, credentials, pixKeys] = await Promise.all([
+    const [servers, resellers, credentials, pixKeys, serverCountRows] = await Promise.all([
       serversRepository.findAll(),
       clientsRepository.findAll({ tipo: 'revenda' }),
       credentialsRepository.findAll({ clientId: null }),
-      userId ? pixKeysRepository.findAllByUser(userId) : Promise.resolve([])
+      userId ? pixKeysRepository.findAllByUser(userId) : Promise.resolve([]),
+      db('credentials as c')
+        .innerJoin('credential_servers as cs', 'cs.credential_id', 'c.id')
+        .whereNotNull('c.client_id')
+        .groupBy('c.client_id')
+        .select('c.client_id as clientId')
+        .count({ count: db.raw('DISTINCT cs.server_id') })
     ]);
 
-    return { servers, resellers, credentials, pixKeys };
+    const serverCountByClient = new Map(
+      serverCountRows.map((row) => [row.clientId, Number(row.count) || 0])
+    );
+
+    const resellersWithCount = resellers.map((reseller) => ({
+      ...reseller,
+      serverCount: serverCountByClient.get(reseller.id) || 0
+    }));
+
+    return { servers, resellers: resellersWithCount, credentials, pixKeys };
   }
 
   async getById(id) {
