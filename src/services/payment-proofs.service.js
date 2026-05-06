@@ -12,12 +12,9 @@ const integrationsService = require('./bot-integrations.service');
 const usersRepository = require('../repositories/users.repository');
 const http = require('http');
 const https = require('https');
+const gcsService = require('./gcs.service');
 
 class PaymentProofsService {
-  getStorageDir() {
-    return path.resolve(process.cwd(), 'storage', 'payment-proofs');
-  }
-
   buildInlineMediaRef(proofId) {
     return `inline:${proofId}`;
   }
@@ -36,17 +33,35 @@ class PaymentProofsService {
   }
 
   async tryWriteLocalProofFile({ proofId, fileName, fileBuffer }) {
-    try {
-      const ext = path.extname(String(fileName || '')).slice(0, 12) || '.bin';
-      const relativePath = path.join('storage', 'payment-proofs', `${proofId}${ext}`);
-      const absolutePath = path.resolve(process.cwd(), relativePath);
-      await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-      await fs.writeFile(absolutePath, fileBuffer);
-      return relativePath;
-    } catch (error) {
-      console.warn('Disco local indisponivel; comprovante sera mantido somente no banco:', error?.message || error);
-      return null;
-    }
+    // Armazenamento em disco desabilitado por requisito.
+    // Mantemos o comprovante apenas no banco (file_content_base64) ou em media externa (Meta).
+    void proofId;
+    void fileName;
+    void fileBuffer;
+    return null;
+  }
+
+  isGcsMediaRef(value) {
+    return String(value || '').startsWith('gcs:');
+  }
+
+  parseGcsMediaRef(value) {
+    const ref = String(value || '').replace(/^gcs:/, '').trim();
+    const [bucket, ...rest] = ref.split('/');
+    const object = rest.join('/');
+    if (!bucket || !object) return null;
+    return { bucket, object };
+  }
+
+  buildGcsObjectName({ rechargeId, proofId, fileName, mimeType }) {
+    const safeRechargeId = String(rechargeId || 'unknown').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80);
+    const safeProofId = String(proofId || 'unknown').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80);
+
+    const extFromName = path.extname(String(fileName || '')).slice(0, 12);
+    const extFromMime = String(mimeType || '').includes('pdf') ? '.pdf' : '';
+    const ext = extFromName || extFromMime || '.bin';
+
+    return `payment-proofs/${safeRechargeId}/${safeProofId}${ext}`;
   }
 
   getZapServiceUrl() {
@@ -266,22 +281,43 @@ class PaymentProofsService {
 
     const proofId = createId('proof');
     const contentBase64Clean = fileBuffer.toString('base64');
-    await this.tryWriteLocalProofFile({ proofId, fileName, fileBuffer });
 
     const trimmedComment = String(comment || '').trim().slice(0, 500);
     const captionValue = trimmedComment || 'Comprovante enviado pelo portal web';
+
+    let gcsLocation = null;
+    if (gcsService.isEnabled()) {
+      try {
+        const objectName = this.buildGcsObjectName({
+          rechargeId: recharge.id,
+          proofId,
+          fileName,
+          mimeType: normalizedMimeType
+        });
+        gcsLocation = await gcsService.uploadBuffer({
+          objectName,
+          buffer: fileBuffer,
+          contentType: normalizedMimeType
+        });
+      } catch (error) {
+        console.error('Falha ao enviar comprovante para GCS; seguindo com base64 no banco:', error);
+      }
+    }
 
     const proof = await paymentProofsRepository.create({
       id: proofId,
       rechargeRequestId,
       senderPhone: user?.whatsappPhone || `web:${user?.id || 'unknown'}`,
       metaMessageId: null,
-      metaMediaId: this.buildInlineMediaRef(proofId),
+      metaMediaId: gcsLocation ? null : this.buildInlineMediaRef(proofId),
       mimeType: normalizedMimeType,
       fileName: fileName || `comprovante-${recharge.id}`,
       caption: captionValue,
       reviewStatus: 'pending_review',
-      fileContentBase64: contentBase64Clean
+      fileContentBase64: gcsLocation ? null : contentBase64Clean,
+      fileStorageProvider: gcsLocation ? 'gcs' : 'db',
+      fileGcsBucket: gcsLocation?.bucket || null,
+      fileGcsObject: gcsLocation?.object || null
     });
 
     const analysis = await paymentProofAnalysisService.analyze({
@@ -408,8 +444,23 @@ class PaymentProofsService {
 
   async downloadProofFile(rechargeRequestId) {
     const { proof } = await this.getLatestByRechargeRequestId(rechargeRequestId);
-    if (!proof.metaMediaId && !proof.fileContentBase64) {
+    if (!proof.metaMediaId && !proof.fileContentBase64 && !(proof.fileGcsBucket && proof.fileGcsObject)) {
       throw new AppError('Comprovante nao possui arquivo vinculado', 404);
+    }
+
+    if (proof.fileGcsBucket && proof.fileGcsObject) {
+      try {
+        const buffer = await gcsService.downloadBuffer({
+          bucketName: proof.fileGcsBucket,
+          objectName: proof.fileGcsObject
+        });
+        return {
+          mimeType: proof.mimeType || 'application/octet-stream',
+          buffer
+        };
+      } catch (error) {
+        throw new AppError('Arquivo do comprovante indisponivel', 404);
+      }
     }
 
     if (proof.fileContentBase64) {
@@ -421,6 +472,25 @@ class PaymentProofsService {
 
     if (this.isInlineMediaRef(proof.metaMediaId)) {
       throw new AppError('Arquivo do comprovante indisponivel', 404);
+    }
+
+    if (this.isGcsMediaRef(proof.metaMediaId)) {
+      const parsed = this.parseGcsMediaRef(proof.metaMediaId);
+      if (!parsed) {
+        throw new AppError('Arquivo do comprovante indisponivel', 404);
+      }
+      try {
+        const buffer = await gcsService.downloadBuffer({
+          bucketName: parsed.bucket,
+          objectName: parsed.object
+        });
+        return {
+          mimeType: proof.mimeType || 'application/octet-stream',
+          buffer
+        };
+      } catch (_error) {
+        throw new AppError('Arquivo do comprovante indisponivel', 404);
+      }
     }
 
     if (this.isLocalMediaRef(proof.metaMediaId)) {

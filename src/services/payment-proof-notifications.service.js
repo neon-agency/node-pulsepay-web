@@ -3,6 +3,7 @@ const https = require('https');
 const fs = require('fs/promises');
 const path = require('path');
 const integrationsService = require('./bot-integrations.service');
+const gcsService = require('./gcs.service');
 const usersRepository = require('../repositories/users.repository');
 const notificationsRepository = require('../repositories/recharge-request-notifications.repository');
 const { createId } = require('../utils/id');
@@ -14,6 +15,18 @@ class PaymentProofNotificationsService {
 
   isInlineMediaRef(value) {
     return String(value || '').startsWith('inline:');
+  }
+
+  isGcsMediaRef(value) {
+    return String(value || '').startsWith('gcs:');
+  }
+
+  parseGcsMediaRef(value) {
+    const ref = String(value || '').replace(/^gcs:/, '').trim();
+    const [bucket, ...rest] = ref.split('/');
+    const object = rest.join('/');
+    if (!bucket || !object) return null;
+    return { bucket, object };
   }
 
   getLocalPathFromMediaRef(value) {
@@ -158,7 +171,7 @@ class PaymentProofNotificationsService {
 
     const connected = await this.isZapConnected();
     let mediaPayload = null;
-    if (proof.metaMediaId || proof.fileContentBase64) {
+    if (proof.metaMediaId || proof.fileContentBase64 || (proof.fileGcsBucket && proof.fileGcsObject)) {
       try {
         let file;
         if (proof.fileContentBase64) {
@@ -166,8 +179,26 @@ class PaymentProofNotificationsService {
             mimeType: proof.mimeType || 'application/octet-stream',
             buffer: Buffer.from(proof.fileContentBase64, 'base64')
           };
+        } else if (proof.fileGcsBucket && proof.fileGcsObject) {
+          file = {
+            mimeType: proof.mimeType || 'application/octet-stream',
+            buffer: await gcsService.downloadBuffer({
+              bucketName: proof.fileGcsBucket,
+              objectName: proof.fileGcsObject
+            })
+          };
         } else if (this.isInlineMediaRef(proof.metaMediaId)) {
           throw new Error('Comprovante inline sem conteudo no banco');
+        } else if (this.isGcsMediaRef(proof.metaMediaId)) {
+          const parsed = this.parseGcsMediaRef(proof.metaMediaId);
+          if (!parsed) throw new Error('Comprovante GCS invalido');
+          file = {
+            mimeType: proof.mimeType || 'application/octet-stream',
+            buffer: await gcsService.downloadBuffer({
+              bucketName: parsed.bucket,
+              objectName: parsed.object
+            })
+          };
         } else if (this.isLocalMediaRef(proof.metaMediaId)) {
           file = {
             mimeType: proof.mimeType || 'application/octet-stream',

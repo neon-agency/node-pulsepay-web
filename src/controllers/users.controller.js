@@ -7,8 +7,8 @@ class UsersController {
       throw new AppError('Acesso negado', 403);
     }
 
-    const { name, email, password, clientId } = req.body || {};
-    const user = await usersService.create({ name, email, password, role: 'reseller', clientId });
+    const { name, email, password, clientId, planId } = req.body || {};
+    const user = await usersService.create({ name, email, password, role: 'reseller', clientId, planId });
     return res.status(201).json(usersService.toPublicUser(user));
   }
 }

@@ -31,6 +31,9 @@ class RechargeRequestPaymentProofsRepository {
       reviewerNotes: row.reviewer_notes,
       reviewedAt: row.reviewed_at,
       fileContentBase64: row.file_content_base64 || null,
+      fileStorageProvider: row.file_storage_provider || null,
+      fileGcsBucket: row.file_gcs_bucket || null,
+      fileGcsObject: row.file_gcs_object || null,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -62,7 +65,10 @@ class RechargeRequestPaymentProofsRepository {
       reviewed_by_user_id: payload.reviewedByUserId || null,
       reviewer_notes: payload.reviewerNotes || null,
       reviewed_at: payload.reviewedAt || null,
-      file_content_base64: payload.fileContentBase64 || null
+      file_content_base64: payload.fileContentBase64 || null,
+      file_storage_provider: clamp(payload.fileStorageProvider, 20),
+      file_gcs_bucket: clamp(payload.fileGcsBucket, 128),
+      file_gcs_object: payload.fileGcsObject || null
     };
 
     let row;
@@ -147,6 +153,24 @@ class RechargeRequestPaymentProofsRepository {
       return this.mapRow(row);
     } catch (error) {
       console.error('Falha ao persistir conteudo do comprovante no banco:', error);
+      return null;
+    }
+  }
+
+  async updateGcsLocation(id, { provider, bucket, object }) {
+    try {
+      const [row] = await db('recharge_request_payment_proofs')
+        .where({ id })
+        .update({
+          file_storage_provider: clamp(provider, 20),
+          file_gcs_bucket: clamp(bucket, 128),
+          file_gcs_object: object || null,
+          updated_at: db.fn.now()
+        })
+        .returning('*');
+      return this.mapRow(row);
+    } catch (error) {
+      console.error('Falha ao persistir localizacao GCS do comprovante no banco:', error);
       return null;
     }
   }

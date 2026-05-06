@@ -5,9 +5,11 @@ const { sanitizeTelefone, isValidTelefone } = require('../utils/phone');
 const { hashPassword } = require('../utils/password');
 const { createId } = require('../utils/id');
 const resellerWelcomeNotificationsService = require('./reseller-welcome-notifications.service');
+const plansService = require('./plans.service');
+const subscriptionsService = require('./subscriptions.service');
 
 class UsersService {
-  async create({ name, email, password, role = 'reseller', clientId = null }) {
+  async create({ name, email, password, role = 'reseller', clientId = null, planId = null }) {
     if (!name || !email || !password) {
       throw new AppError('Nome, email e senha são obrigatórios', 400);
     }
@@ -42,6 +44,21 @@ class UsersService {
       isActive: true
     });
 
+    if (role === 'reseller') {
+      let selectedPlanId = planId;
+      if (!selectedPlanId) {
+        const activePlans = await plansService.listActive();
+        selectedPlanId = activePlans[0]?.id || null;
+      }
+      if (selectedPlanId) {
+        try {
+          await subscriptionsService.createPendingForUser({ userId: user.id, planId: selectedPlanId });
+        } catch (error) {
+          console.error('Falha ao criar assinatura pendente para revenda:', error);
+        }
+      }
+    }
+
     if (role === 'reseller' && user.whatsappPhone) {
       try {
         await resellerWelcomeNotificationsService.notify({
@@ -63,7 +80,18 @@ class UsersService {
       throw new AppError('Usuário não encontrado', 404);
     }
 
-    return this.toPublicUser(user);
+    const publicUser = this.toPublicUser(user);
+    if (publicUser.role === 'reseller') {
+      try {
+        const current = await subscriptionsService.getCurrentForUser(publicUser.id);
+        publicUser.subscription = current?.subscription
+          ? { id: current.subscription.id, status: current.subscription.status, planId: current.subscription.planId }
+          : null;
+      } catch {
+        publicUser.subscription = null;
+      }
+    }
+    return publicUser;
   }
 
   async updateWhatsappPhone(userId, rawPhone) {
@@ -131,7 +159,8 @@ class UsersService {
       email: user.email,
       role: user.role,
       clientId: user.clientId || null,
-      whatsappPhone: user.whatsappPhone || null
+      whatsappPhone: user.whatsappPhone || null,
+      subscription: null
     };
   }
 }

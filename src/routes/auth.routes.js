@@ -7,6 +7,7 @@ const usersService = require('../services/users.service');
 const authRoutes = Router();
 
 authRoutes.post('/login', asyncHandler((req, res) => authController.login(req, res)));
+authRoutes.post('/register', asyncHandler((req, res) => authController.register(req, res)));
 authRoutes.get('/me', authMiddleware, asyncHandler((req, res) => authController.me(req, res)));
 authRoutes.patch('/me', authMiddleware, asyncHandler(async (req, res) => {
   if (!req.user?.id) {

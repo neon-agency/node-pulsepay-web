@@ -8,6 +8,10 @@ const credentialsRoutes = require('./routes/credentials.routes');
 const rechargeRequestsRoutes = require('./routes/recharge-requests.routes');
 const botRoutes = require('./routes/bot.routes');
 const pixKeysRoutes = require('./routes/pix-keys.routes');
+const plansRoutes = require('./routes/plans.routes');
+const subscriptionsRoutes = require('./routes/subscriptions.routes');
+const paymentWebhookRoutes = require('./routes/payment-webhook.routes');
+const publicRoutes = require('./routes/public.routes');
 const authMiddleware = require('./middlewares/auth.middleware');
 const errorHandler = require('./middlewares/error-handler');
 
@@ -30,6 +34,10 @@ app.use('/api/credentials', credentialsRoutes);
 app.use('/api/recharge-requests', rechargeRequestsRoutes);
 app.use('/api/bot', botRoutes);
 app.use('/api/pix-keys', pixKeysRoutes);
+app.use('/api/plans', plansRoutes);
+app.use('/api/subscriptions', subscriptionsRoutes);
+app.use('/webhook', paymentWebhookRoutes);
+app.use('/public', publicRoutes);
 
 app.use(errorHandler);
 
