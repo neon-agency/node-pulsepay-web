@@ -23,6 +23,18 @@ class UsersController {
     });
     return res.status(200).json(result);
   }
+
+  async welcomeLink(req, res) {
+    if (req.user?.role !== 'admin') {
+      throw new AppError('Acesso negado', 403);
+    }
+
+    const result = await usersService.prepareWelcomeLink({
+      adminId: req.user.id,
+      clientId: req.params.clientId
+    });
+    return res.status(200).json(result);
+  }
 }
 
 module.exports = new UsersController();

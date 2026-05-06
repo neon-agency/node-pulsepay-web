@@ -108,6 +108,34 @@ class UsersService {
     return { sent: true };
   }
 
+  async prepareWelcomeLink({ adminId, clientId }) {
+    if (!adminId) throw new AppError('Acesso negado', 403);
+    if (!clientId) throw new AppError('Revenda inválida', 400);
+
+    const user = await usersRepository.findByClientId(clientId);
+    if (!user || !user.isActive) {
+      throw new AppError('Usuário da revenda não encontrado', 404);
+    }
+    if (user.role !== 'reseller') {
+      throw new AppError('Usuário não é uma revenda', 400);
+    }
+    if (user.adminId && user.adminId !== adminId) {
+      throw new AppError('Acesso negado', 403);
+    }
+    if (!user.whatsappPhone) {
+      throw new AppError('Revenda sem WhatsApp cadastrado', 400);
+    }
+
+    const newPassword = generateRandomPassword(10);
+    await usersRepository.updateProfile(user.id, { passwordHash: hashPassword(newPassword) });
+
+    return {
+      phone: user.whatsappPhone,
+      email: user.email,
+      password: newPassword
+    };
+  }
+
   async getById(id) {
     const user = await usersRepository.findById(id);
     if (!user || !user.isActive) {
