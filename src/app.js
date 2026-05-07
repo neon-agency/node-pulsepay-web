@@ -1,4 +1,5 @@
 const express = require('express');
+const path = require('path');
 const authRoutes = require('./routes/auth.routes');
 const usersRoutes = require('./routes/users.routes');
 const serversRoutes = require('./routes/servers.routes');
@@ -17,6 +18,11 @@ const app = express();
 
 // Upload web chega como JSON + base64, entao o payload HTTP fica maior que o arquivo real.
 app.use(express.json({ limit: '12mb' }));
+
+app.use('/storage/logos', express.static(path.resolve(process.cwd(), 'storage', 'logos'), {
+  maxAge: '7d',
+  fallthrough: true,
+}));
 
 app.get('/health', (_req, res) => {
   res.status(200).json({ status: 'ok' });

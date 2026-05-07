@@ -1,7 +1,18 @@
 const AppError = require('../errors/app-error');
+const fs = require('fs/promises');
+const path = require('path');
 const whiteLabelRepository = require('../repositories/white-label.repository');
 const usersRepository = require('../repositories/users.repository');
 const { createId } = require('../utils/id');
+
+const LOGO_ALLOWED_MIME = {
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/jpg': '.jpg',
+  'image/webp': '.webp',
+  'image/svg+xml': '.svg',
+};
+const LOGO_MAX_BYTES = 2 * 1024 * 1024;
 
 const VALID_SCHEMES = ['default', 'blue', 'purple', 'emerald', 'orange', 'rose', 'cyan', 'amber', 'teal', 'indigo', 'lime', 'slate', 'custom'];
 const VALID_FONTS = ['default', 'inter', 'manrope', 'space-grotesk', 'poppins', 'dm-sans', 'roboto'];
@@ -120,6 +131,39 @@ class WhiteLabelService {
       loginTagline,
       loginFeatures: normalizedFeatures,
     });
+  }
+
+  async uploadLogo(userId, { fileName, mimeType, contentBase64, publicBaseUrl }) {
+    const user = await usersRepository.findById(userId);
+    if (!user || !user.isActive) throw new AppError('Usuário não encontrado', 404);
+    if (user.role !== 'admin') throw new AppError('Somente administradores podem enviar a logo', 403);
+
+    if (!contentBase64) throw new AppError('Arquivo da logo não informado', 400);
+
+    const normalizedMime = String(mimeType || '').trim().toLowerCase();
+    const ext = LOGO_ALLOWED_MIME[normalizedMime];
+    if (!ext) {
+      throw new AppError('Formato inválido. Envie PNG, JPG, WEBP ou SVG.', 400);
+    }
+
+    const buffer = Buffer.from(String(contentBase64), 'base64');
+    if (!buffer.length) throw new AppError('Arquivo da logo inválido', 400);
+    if (buffer.length > LOGO_MAX_BYTES) {
+      throw new AppError('Imagem muito grande. Limite de 2 MB.', 400);
+    }
+
+    const logoId = createId();
+    const relativeDir = path.join('storage', 'logos', userId);
+    const absoluteDir = path.resolve(process.cwd(), relativeDir);
+    await fs.mkdir(absoluteDir, { recursive: true });
+    const absolutePath = path.join(absoluteDir, `${logoId}${ext}`);
+    await fs.writeFile(absolutePath, buffer);
+
+    const relativeUrl = `/storage/logos/${userId}/${logoId}${ext}`;
+    const base = (publicBaseUrl || process.env.PUBLIC_API_BASE_URL || '').replace(/\/+$/, '');
+    const logoUrl = base ? `${base}${relativeUrl}` : relativeUrl;
+    await whiteLabelRepository.upsert(userId, createId(), { logoUrl });
+    return { logoUrl };
   }
 }
 
