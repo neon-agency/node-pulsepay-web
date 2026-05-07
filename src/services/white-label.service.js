@@ -1,6 +1,4 @@
 const AppError = require('../errors/app-error');
-const fs = require('fs/promises');
-const path = require('path');
 const whiteLabelRepository = require('../repositories/white-label.repository');
 const usersRepository = require('../repositories/users.repository');
 const { createId } = require('../utils/id');
@@ -133,7 +131,7 @@ class WhiteLabelService {
     });
   }
 
-  async uploadLogo(userId, { fileName, mimeType, contentBase64, publicBaseUrl }) {
+  async uploadLogo(userId, { mimeType, contentBase64 }) {
     const user = await usersRepository.findById(userId);
     if (!user || !user.isActive) throw new AppError('Usuário não encontrado', 404);
     if (user.role !== 'admin') throw new AppError('Somente administradores podem enviar a logo', 403);
@@ -141,8 +139,7 @@ class WhiteLabelService {
     if (!contentBase64) throw new AppError('Arquivo da logo não informado', 400);
 
     const normalizedMime = String(mimeType || '').trim().toLowerCase();
-    const ext = LOGO_ALLOWED_MIME[normalizedMime];
-    if (!ext) {
+    if (!LOGO_ALLOWED_MIME[normalizedMime]) {
       throw new AppError('Formato inválido. Envie PNG, JPG, WEBP ou SVG.', 400);
     }
 
@@ -152,16 +149,8 @@ class WhiteLabelService {
       throw new AppError('Imagem muito grande. Limite de 2 MB.', 400);
     }
 
-    const logoId = createId();
-    const relativeDir = path.join('storage', 'logos', userId);
-    const absoluteDir = path.resolve(process.cwd(), relativeDir);
-    await fs.mkdir(absoluteDir, { recursive: true });
-    const absolutePath = path.join(absoluteDir, `${logoId}${ext}`);
-    await fs.writeFile(absolutePath, buffer);
-
-    const relativeUrl = `/storage/logos/${userId}/${logoId}${ext}`;
-    const base = (publicBaseUrl || process.env.PUBLIC_API_BASE_URL || '').replace(/\/+$/, '');
-    const logoUrl = base ? `${base}${relativeUrl}` : relativeUrl;
+    const cleanBase64 = buffer.toString('base64');
+    const logoUrl = `data:${normalizedMime};base64,${cleanBase64}`;
     await whiteLabelRepository.upsert(userId, createId(), { logoUrl });
     return { logoUrl };
   }

@@ -18,15 +18,10 @@ whiteLabelRoutes.get('/', authMiddleware, asyncHandler(async (req, res) => {
 }));
 
 whiteLabelRoutes.post('/logo', authMiddleware, asyncHandler(async (req, res) => {
-  const { fileName, mimeType, contentBase64 } = req.body ?? {};
-  const forwardedProto = req.headers['x-forwarded-proto'] || req.protocol;
-  const forwardedHost = req.headers['x-forwarded-host'] || req.get('host');
-  const publicBaseUrl = forwardedHost ? `${forwardedProto}://${forwardedHost}` : null;
+  const { mimeType, contentBase64 } = req.body ?? {};
   const result = await whiteLabelService.uploadLogo(req.user.id, {
-    fileName,
     mimeType,
     contentBase64,
-    publicBaseUrl,
   });
   return res.status(201).json(result);
 }));
