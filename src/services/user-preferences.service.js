@@ -4,7 +4,7 @@ const usersRepository = require('../repositories/users.repository');
 const { createId } = require('../utils/id');
 
 const VALID_THEMES = ['light', 'dark', 'system'];
-const VALID_SCHEMES = ['default', 'blue', 'purple', 'emerald', 'orange', 'rose', 'cyan', 'amber', 'custom'];
+const VALID_SCHEMES = ['default', 'blue', 'purple', 'emerald', 'orange', 'rose', 'cyan', 'amber', 'teal', 'indigo', 'lime', 'slate', 'custom'];
 const HEX_RE = /^#?[0-9a-fA-F]{6}$/;
 
 class UserPreferencesService {
