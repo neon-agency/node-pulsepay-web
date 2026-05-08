@@ -30,7 +30,7 @@ class PaymentProofNotificationsService {
   }
 
   getAdminUrl() {
-    return process.env.PULSEPAY_PANEL_URL || process.env.PULSEPAY_ADMIN_URL || process.env.INTERNAL_API_BASE_URL || 'https://pulsepaypainel.vercel.app/';
+    return process.env.PULSEPAY_PANEL_URL || process.env.PULSEPAY_ADMIN_URL || 'https://pulsepaypainel.vercel.app/';
   }
 
   async makeRequest(url, { method = 'GET', payload } = {}) {
