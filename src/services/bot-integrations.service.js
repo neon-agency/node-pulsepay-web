@@ -163,6 +163,19 @@ class BotIntegrationsService {
     }
   }
 
+  async getPaymentStatus({ provider, id }) {
+    const { paymentServiceUrl } = this.getUrls();
+    const body = await this.makeRequest(`${paymentServiceUrl}/api/v1/payments/${provider}/${id}`, {
+      method: 'GET'
+    });
+
+    try {
+      return JSON.parse(body);
+    } catch (_error) {
+      throw new Error(`Resposta inválida ao consultar pagamento: ${body}`);
+    }
+  }
+
   async fetchServersFromApi() {
     const { internalApiBaseUrl } = this.getUrls();
     const parseServersResponse = (body) => {

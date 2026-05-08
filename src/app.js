@@ -12,6 +12,7 @@ const plansRoutes = require('./routes/plans.routes');
 const subscriptionsRoutes = require('./routes/subscriptions.routes');
 const paymentWebhookRoutes = require('./routes/payment-webhook.routes');
 const publicRoutes = require('./routes/public.routes');
+const signupPublicRoutes = require('./routes/signup-public.routes');
 const authMiddleware = require('./middlewares/auth.middleware');
 const errorHandler = require('./middlewares/error-handler');
 
@@ -38,6 +39,7 @@ app.use('/api/plans', plansRoutes);
 app.use('/api/subscriptions', subscriptionsRoutes);
 app.use('/webhook', paymentWebhookRoutes);
 app.use('/public', publicRoutes);
+app.use('/public/signup', signupPublicRoutes);
 
 app.use(errorHandler);
 

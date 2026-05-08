@@ -5,6 +5,61 @@ const userSubscriptionsRepository = require('../repositories/user-subscriptions.
 const botIntegrationsService = require('./bot-integrations.service');
 
 class SubscriptionsService {
+  getFrontendBaseUrl() {
+    return (
+      process.env.NANO_GERENCIADOR_BASE_URL
+      || process.env.FRONTEND_BASE_URL
+      || process.env.APP_BASE_URL
+      || 'http://localhost:3000'
+    );
+  }
+
+  buildStripeReturnUrls({ subscriptionId } = {}) {
+    const base = String(this.getFrontendBaseUrl()).replace(/\/+$/, '');
+    const sid = encodeURIComponent(String(subscriptionId || ''));
+    return {
+      success_url: `${base}/reseller/billing?payment=stripe&result=success&subscriptionId=${sid}`,
+      cancel_url: `${base}/reseller/billing?payment=stripe&result=cancel&subscriptionId=${sid}`
+    };
+  }
+
+  getPixKey() {
+    const raw = String(process.env.PIX_KEY || '').trim();
+    if (!raw) return null;
+
+    const sanitized = raw.replace(/[^a-fA-F0-9-]/g, '');
+    if (/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(sanitized)) {
+      return sanitized;
+    }
+
+    return raw;
+  }
+
+  getAllowedMethods() {
+    const raw = process.env.SUBSCRIPTION_PAYMENT_ALLOWED_METHODS;
+    if (!raw) return ['pix', 'card'];
+    return String(raw)
+      .split(',')
+      .map((v) => v.trim().toLowerCase())
+      .filter(Boolean);
+  }
+
+  resolveMethod(requested) {
+    const allowed = this.getAllowedMethods();
+    const desired = String(requested || process.env.SUBSCRIPTION_PAYMENT_METHOD || 'pix').trim().toLowerCase();
+    if (allowed.includes(desired)) return desired;
+    return allowed[0] || 'pix';
+  }
+
+  resolveProvider({ requestedProvider, method }) {
+    const normalizedRequested = String(requestedProvider || '').trim().toLowerCase();
+    const normalizedMethod = String(method || '').trim().toLowerCase();
+
+    if (normalizedMethod === 'card') return 'stripe';
+    if (normalizedMethod === 'pix') return 'efi';
+
+    return normalizedRequested || String(process.env.SUBSCRIPTION_PAYMENT_PROVIDER || 'efi').trim().toLowerCase();
+  }
   getWebhookSecret() {
     return process.env.PAYMENT_WEBHOOK_SECRET || process.env.INTERNAL_API_KEY || null;
   }
@@ -26,6 +81,17 @@ class SubscriptionsService {
     });
   }
 
+  async createActiveForUser({ userId, planId }) {
+    const plan = await plansService.getById(planId);
+    return userSubscriptionsRepository.create({
+      id: createId('sub'),
+      userId,
+      planId: plan.id,
+      status: 'active',
+      activatedAt: new Date().toISOString()
+    });
+  }
+
   async getCurrentForUser(userId) {
     const subscription = await userSubscriptionsRepository.findLatestByUserId(userId);
     if (!subscription) {
@@ -35,7 +101,7 @@ class SubscriptionsService {
     return { subscription, plan };
   }
 
-  async startPaymentForUser(user) {
+  async startPaymentForUser(user, { provider, method, paymentToken, installments, customer } = {}) {
     if (!user?.id) {
       throw new AppError('Usuario invalido', 401);
     }
@@ -54,18 +120,52 @@ class SubscriptionsService {
 
     const plan = await plansService.getById(current.planId);
 
+    const resolvedMethod = this.resolveMethod(method);
+    const resolvedProvider = this.resolveProvider({ requestedProvider: provider, method: resolvedMethod });
+
+    if (resolvedProvider === 'stripe' && !plan.stripePriceId) {
+      throw new AppError(
+        `Plano "${plan.name}" sem STRIPE_PRICE_ID configurado. Defina STRIPE_PRICE_ID_${plan.name.toUpperCase()} no .env do backend.`,
+        400
+      );
+    }
+
+    const baseCustomer = {
+      name: user?.name || '',
+      email: user?.email || '',
+      phone: user?.whatsappPhone || '',
+      cpf: '',
+      birth: ''
+    };
+
+    const mergedCustomer = {
+      ...baseCustomer,
+      ...(customer && typeof customer === 'object' ? customer : {})
+    };
+
     const payload = {
-      provider: process.env.SUBSCRIPTION_PAYMENT_PROVIDER || 'efi',
-      method: process.env.SUBSCRIPTION_PAYMENT_METHOD || 'pix',
+      provider: resolvedProvider,
+      method: resolvedMethod,
       amount: plan.priceCents,
       currency: plan.currency || 'BRL',
       description: `Assinatura ${plan.name}`,
+      ...(resolvedMethod === 'pix' ? { pix_key: this.getPixKey() } : {}),
+      ...(resolvedMethod === 'card'
+        ? {
+            payment_token: paymentToken || null,
+            installments: Number.isFinite(Number(installments)) ? Number(installments) : 1,
+          }
+        : {}),
+      customer: mergedCustomer,
+      items: [{ name: `Assinatura ${plan.name}`, value: plan.priceCents, amount: 1 }],
       metadata: {
         kind: 'subscription',
         subscription_id: current.id,
         plan_id: plan.id,
+        ...(resolvedProvider === 'stripe' ? { stripe_price_id: plan.stripePriceId } : {}),
         user_id: user.id,
-        user_email: user.email || null
+        user_email: user.email || null,
+        ...(resolvedProvider === 'stripe' ? this.buildStripeReturnUrls({ subscriptionId: current.id }) : {})
       }
     };
 
@@ -106,4 +206,3 @@ class SubscriptionsService {
 }
 
 module.exports = new SubscriptionsService();
-
