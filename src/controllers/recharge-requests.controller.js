@@ -36,6 +36,16 @@ async function ensureRechargeAccess(req, rechargeRequestId) {
   return data;
 }
 
+function canSeeServerCost(user) {
+  return user?.type === 'internal' || user?.role === 'admin';
+}
+
+function stripServerCost(item) {
+  if (!item) return item;
+  const { serverUnitCost: _omit, ...rest } = item;
+  return rest;
+}
+
 class RechargeRequestsController {
   async list(req, res) {
     let credentialIds = null;
@@ -50,7 +60,8 @@ class RechargeRequestsController {
     }
 
     const data = await rechargeRequestsService.list({ credentialIds });
-    return res.status(200).json(data);
+    const filtered = canSeeServerCost(req.user) ? data : data.map(stripServerCost);
+    return res.status(200).json(filtered);
   }
 
   async page(req, res) {
@@ -90,15 +101,19 @@ class RechargeRequestsController {
       ? Buffer.from(JSON.stringify(data.nextCursor), 'utf8').toString('base64')
       : null;
 
+    const rechargeRequests = canSeeServerCost(req.user)
+      ? data.rechargeRequests
+      : data.rechargeRequests.map(stripServerCost);
+
     return res.status(200).json({
-      rechargeRequests: data.rechargeRequests,
+      rechargeRequests,
       nextCursor: encodedNextCursor
     });
   }
 
   async getById(req, res) {
     const data = await ensureRechargeAccess(req, req.params.id);
-    return res.status(200).json(data);
+    return res.status(200).json(canSeeServerCost(req.user) ? data : stripServerCost(data));
   }
 
   async create(req, res) {

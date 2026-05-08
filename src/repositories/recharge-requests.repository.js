@@ -36,6 +36,7 @@ class RechargeRequestsRepository {
       credentialLast4: row.credential_last4,
       servidor: row.servidor,
       servidorUrl: row.servidor_url ?? null,
+      serverUnitCost: row.server_unit_cost != null ? Number(row.server_unit_cost) : 0,
       createdByUserName: row.created_by_user_name,
       createdByUserEmail: row.created_by_user_email
     };
@@ -58,6 +59,7 @@ class RechargeRequestsRepository {
       isPromo: Boolean(row.is_promo),
       promoUnitPrice: row.promo_unit_price != null ? Number(row.promo_unit_price) : null,
       catalogUnitPrice: row.catalog_unit_price != null ? Number(row.catalog_unit_price) : null,
+      serverUnitCost: row.server_unit_cost != null ? Number(row.server_unit_cost) : 0,
       createdAt: row.created_at,
       createdByUserName: row.created_by_user_name ?? null,
       createdByUserEmail: row.created_by_user_email ?? null
@@ -91,6 +93,7 @@ class RechargeRequestsRepository {
         'rr.created_at',
         's.servidor',
         's.url as servidor_url',
+        's.custo_credito as server_unit_cost',
         'c.last4 as credential_last4',
         'u.name as created_by_user_name',
         'u.email as created_by_user_email'
@@ -146,6 +149,7 @@ class RechargeRequestsRepository {
         'c.last4 as credential_last4',
         's.servidor',
         's.url as servidor_url',
+        's.custo_credito as server_unit_cost',
         'u.name as created_by_user_name',
         'u.email as created_by_user_email'
       )
@@ -170,6 +174,7 @@ class RechargeRequestsRepository {
         'c.last4 as credential_last4',
         's.servidor',
         's.url as servidor_url',
+        's.custo_credito as server_unit_cost',
         'u.name as created_by_user_name',
         'u.email as created_by_user_email'
       )
@@ -263,6 +268,7 @@ class RechargeRequestsRepository {
         'c.last4 as credential_last4',
         's.servidor',
         's.url as servidor_url',
+        's.custo_credito as server_unit_cost',
         'u.name as created_by_user_name',
         'u.email as created_by_user_email'
       )
