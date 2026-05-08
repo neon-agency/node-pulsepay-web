@@ -22,7 +22,7 @@ Projeto web responsivo para intermediação de pagamentos Pix.
 3. Rode:
 
 ```bash
-curl -X GET "https://pulsepay.webutilidades.online/health"
+curl -X GET "https://pulsepay.webutilidades.online/health" 
 ``` 
 
 ## Autenticação
