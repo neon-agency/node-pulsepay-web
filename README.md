@@ -13,7 +13,7 @@ Este README documenta as rotas para integração com outra aplicação.
 Exemplo: 
 # Recarga Facil Frontend  
     
-Projeto web responsivo para intermediação de pagamentos Pix. 
+Projeto web responsivo para intermediação de pagamentos Pix.  
  
 ## Rodar localmente 
  
