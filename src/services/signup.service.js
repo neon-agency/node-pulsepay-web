@@ -165,6 +165,14 @@ class SignupService {
       return { ok: true, already: true };
     }
 
+    const existingUser = await usersRepository.findByEmail(intent.email);
+    if (existingUser) {
+      // Fluxo idempotente: se o usuário já existe, apenas garante assinatura ativa e marca o intent.
+      await subscriptionsService.createActiveForUser({ userId: existingUser.id, planId: plan.id });
+      await signupIntentsRepository.markAccountCreated(intent.id);
+      return { ok: true, already: true, userId: existingUser.id };
+    }
+
     await signupIntentsRepository.markPaid(intent.id);
 
     // Cria client (revenda) + user + subscription ativa
