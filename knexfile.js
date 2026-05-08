@@ -43,7 +43,8 @@ module.exports = {
     connection: buildConnection(),
     migrations: {
       directory: path.resolve(__dirname, 'migrations'),
-      tableName: 'knex_migrations'
+      tableName: 'knex_migrations',
+      disableMigrationsListValidation: true
     }
   }
 };

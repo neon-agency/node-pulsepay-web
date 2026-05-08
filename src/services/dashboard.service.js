@@ -221,7 +221,8 @@ class DashboardService {
       createdAt: r.createdAt ?? r.created_at ?? null,
       serverId: r.serverId ?? r.server_id ?? null,
       quantity: Number(r.quantity ?? 0),
-      totalAmount: Number(r.totalAmount ?? r.total_amount ?? 0)
+      totalAmount: Number(r.totalAmount ?? r.total_amount ?? 0),
+      isPromo: Boolean(r.isPromo ?? r.is_promo ?? false)
     };
   }
 
@@ -249,6 +250,7 @@ class DashboardService {
     const periods = ['dia', 'semana', 'mes'];
     const creditosVendidos = {};
     const lucro = {};
+    const recargasPromocionais = {};
 
     for (const period of periods) {
       const cutoff = startOf(period);
@@ -260,6 +262,7 @@ class DashboardService {
       }, 0);
       creditosVendidos[period] = totalQty;
       lucro[period] = toMoney(totalLucro);
+      recargasPromocionais[period] = subset.filter((r) => r.isPromo).length;
     }
 
     const totalClientes = clients.length;
@@ -304,7 +307,8 @@ class DashboardService {
         totalRevenda: { total: totalRevenda },
         creditosVendidos,
         lucro,
-        recargasDoDia
+        recargasDoDia,
+        recargasPromocionais
       },
       distribuicaoPorServidor,
       alertasEstoque
@@ -315,7 +319,7 @@ class DashboardService {
     const [clients, servers, allRecharges] = await Promise.all([
       clientsRepository.findAll(),
       serversRepository.findAll(),
-      db('recharge_requests').select('server_id', 'quantity', 'total_amount', 'created_at', 'payment_status')
+      db('recharge_requests').select('server_id', 'quantity', 'total_amount', 'created_at', 'payment_status', 'is_promo')
     ]);
 
     return this._computeSummary({ clients, servers, allRecharges });

@@ -41,17 +41,24 @@ class CredentialsService {
     return normalized.sort((a, b) => a.quantity - b.quantity);
   }
 
-  buildEffectivePriceTiers(serverPriceTiers = [], priceTiersOverride = [], fallbackBasePrice = 0) {
+  buildEffectivePriceTiers(serverPriceTiers = [], priceTiersOverride = [], fallbackBasePrice = 0, opts = {}) {
     const baseTiers = Array.isArray(serverPriceTiers) && serverPriceTiers.length > 0
       ? serverPriceTiers
       : [{ quantity: 1, unitPrice: fallbackBasePrice }];
     const overrideByQuantity = new Map(
       (priceTiersOverride || []).map((tier) => [tier.quantity, tier.unitPrice])
     );
+    const promoActive = Boolean(opts?.promoActive);
+    const promoByQuantity = promoActive
+      ? new Map((opts?.promoPriceTiers || []).map((tier) => [tier.quantity, tier.unitPrice]))
+      : new Map();
 
     return baseTiers.map((tier) => ({
       quantity: tier.quantity,
-      unitPrice: overrideByQuantity.get(tier.quantity) ?? tier.unitPrice
+      unitPrice:
+        promoByQuantity.get(tier.quantity)
+        ?? overrideByQuantity.get(tier.quantity)
+        ?? tier.unitPrice
     }));
   }
 
@@ -185,7 +192,10 @@ class CredentialsService {
     const links = await credentialServersRepository.findByCredentialIdWithServers(credentialId);
     return links.map((link) => ({
       ...link,
-      priceTiers: this.buildEffectivePriceTiers(link.serverPriceTiers, link.priceTiersOverride, link.basePrice),
+      priceTiers: this.buildEffectivePriceTiers(link.serverPriceTiers, link.priceTiersOverride, link.basePrice, {
+        promoActive: link.serverPromoActive,
+        promoPriceTiers: link.serverPromoPriceTiers
+      }),
       effectivePrice: link.priceOverride === null ? link.basePrice : link.priceOverride
     }));
   }
@@ -272,7 +282,10 @@ class CredentialsService {
         basePrice: mapped.basePrice,
         priceOverride: mapped.priceOverride,
         priceTiersOverride: mapped.priceTiersOverride,
-        priceTiers: this.buildEffectivePriceTiers(mapped.serverPriceTiers, mapped.priceTiersOverride, mapped.basePrice),
+        priceTiers: this.buildEffectivePriceTiers(mapped.serverPriceTiers, mapped.priceTiersOverride, mapped.basePrice, {
+          promoActive: mapped.serverPromoActive,
+          promoPriceTiers: mapped.serverPromoPriceTiers
+        }),
         effectivePrice: mapped.priceOverride === null ? mapped.basePrice : mapped.priceOverride,
         email: mapped.email ?? null,
         login: mapped.login ?? null
@@ -332,7 +345,10 @@ class CredentialsService {
       basePrice: link.basePrice,
       priceOverride: link.priceOverride,
       priceTiersOverride: link.priceTiersOverride,
-      priceTiers: this.buildEffectivePriceTiers(link.serverPriceTiers, link.priceTiersOverride, link.basePrice),
+      priceTiers: this.buildEffectivePriceTiers(link.serverPriceTiers, link.priceTiersOverride, link.basePrice, {
+        promoActive: link.serverPromoActive,
+        promoPriceTiers: link.serverPromoPriceTiers
+      }),
       effectivePrice: link.priceOverride === null ? link.basePrice : link.priceOverride,
       email: link.email ?? null,
       login: link.login ?? null

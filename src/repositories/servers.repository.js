@@ -21,6 +21,9 @@ class ServersRepository {
       url: row.url,
       basePrice: Number(row.base_price),
       priceTiers: this.normalizePriceTiers(row.price_tiers),
+      promoPriceTiers: this.normalizePriceTiers(row.promo_price_tiers),
+      promoActive: Boolean(row.promo_active),
+      promoExpiresAt: row.promo_expires_at ? new Date(row.promo_expires_at).toISOString() : null,
       custoCredito: Number(row.custo_credito ?? 0),
       estoque: Number(row.estoque ?? 0),
       estoqueAlerta: row.estoque_alerta != null ? Number(row.estoque_alerta) : null,
@@ -31,7 +34,17 @@ class ServersRepository {
     };
   }
 
+  async expireOutdatedPromos() {
+    await db('servers')
+      .where('promo_active', true)
+      .whereNotNull('promo_expires_at')
+      .where('promo_expires_at', '<=', db.fn.now())
+      .update({ promo_active: false, updated_at: db.fn.now() });
+  }
+
   async findAll() {
+    await this.expireOutdatedPromos();
+
     const resellerSubquery = db('credential_servers as cs')
       .join('credentials as c', 'c.id', 'cs.credential_id')
       .join('clients as cl', 'cl.id', 'c.client_id')
@@ -72,6 +85,7 @@ class ServersRepository {
   }
 
   async findById(id) {
+    await this.expireOutdatedPromos();
     const row = await db('servers').where({ id }).first();
     return this.mapRow(row);
   }
@@ -81,12 +95,18 @@ class ServersRepository {
       ...server,
       base_price: server.basePrice,
       price_tiers: JSON.stringify(server.priceTiers || []),
+      promo_price_tiers: JSON.stringify(server.promoPriceTiers || []),
+      promo_active: Boolean(server.promoActive),
+      promo_expires_at: server.promoExpiresAt ?? null,
       custo_credito: server.custoCredito ?? 0,
       estoque_alerta: server.estoqueAlerta ?? null
     };
 
     delete payload.basePrice;
     delete payload.priceTiers;
+    delete payload.promoPriceTiers;
+    delete payload.promoActive;
+    delete payload.promoExpiresAt;
     delete payload.custoCredito;
     delete payload.estoqueAlerta;
     const [row] = await db('servers').insert(payload).returning('*');
@@ -103,8 +123,21 @@ class ServersRepository {
       updated_at: db.fn.now()
     };
 
+    if (updates.promoPriceTiers !== undefined) {
+      payload.promo_price_tiers = JSON.stringify(updates.promoPriceTiers || []);
+    }
+    if (updates.promoActive !== undefined) {
+      payload.promo_active = Boolean(updates.promoActive);
+    }
+    if (updates.promoExpiresAt !== undefined) {
+      payload.promo_expires_at = updates.promoExpiresAt;
+    }
+
     delete payload.basePrice;
     delete payload.priceTiers;
+    delete payload.promoPriceTiers;
+    delete payload.promoActive;
+    delete payload.promoExpiresAt;
     delete payload.custoCredito;
     delete payload.estoqueAlerta;
 
@@ -113,6 +146,16 @@ class ServersRepository {
       .update(payload)
       .returning('*');
 
+    return this.mapRow(row);
+  }
+
+  async updatePromo(id, { promoActive, promoExpiresAt, promoPriceTiers }) {
+    const payload = { updated_at: db.fn.now() };
+    if (promoActive !== undefined) payload.promo_active = Boolean(promoActive);
+    if (promoExpiresAt !== undefined) payload.promo_expires_at = promoExpiresAt;
+    if (promoPriceTiers !== undefined) payload.promo_price_tiers = JSON.stringify(promoPriceTiers || []);
+
+    const [row] = await db('servers').where({ id }).update(payload).returning('*');
     return this.mapRow(row);
   }
 

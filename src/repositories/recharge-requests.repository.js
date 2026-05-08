@@ -19,6 +19,9 @@ class RechargeRequestsRepository {
       pixTxid: row.pix_txid,
       requestedByPhone: row.requested_by_phone,
       archived: Boolean(row.archived),
+      isPromo: Boolean(row.is_promo),
+      promoUnitPrice: row.promo_unit_price != null ? Number(row.promo_unit_price) : null,
+      catalogUnitPrice: row.catalog_unit_price != null ? Number(row.catalog_unit_price) : null,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -52,6 +55,9 @@ class RechargeRequestsRepository {
       totalAmount: Number(row.total_amount),
       paymentStatus: row.payment_status,
       archived: Boolean(row.archived),
+      isPromo: Boolean(row.is_promo),
+      promoUnitPrice: row.promo_unit_price != null ? Number(row.promo_unit_price) : null,
+      catalogUnitPrice: row.catalog_unit_price != null ? Number(row.catalog_unit_price) : null,
       createdAt: row.created_at,
       createdByUserName: row.created_by_user_name ?? null,
       createdByUserEmail: row.created_by_user_email ?? null
@@ -79,6 +85,9 @@ class RechargeRequestsRepository {
         'rr.total_amount',
         'rr.payment_status',
         'rr.archived',
+        'rr.is_promo',
+        'rr.promo_unit_price',
+        'rr.catalog_unit_price',
         'rr.created_at',
         's.servidor',
         's.url as servidor_url',
@@ -183,7 +192,10 @@ class RechargeRequestsRepository {
       payment_status: item.paymentStatus,
       pix_code: item.pixCode,
       pix_txid: item.pixTxid,
-      requested_by_phone: item.requestedByPhone
+      requested_by_phone: item.requestedByPhone,
+      is_promo: Boolean(item.isPromo),
+      promo_unit_price: item.promoUnitPrice ?? null,
+      catalog_unit_price: item.catalogUnitPrice ?? null
     };
 
     delete payload.credentialId;
@@ -197,6 +209,9 @@ class RechargeRequestsRepository {
     delete payload.pixCode;
     delete payload.pixTxid;
     delete payload.requestedByPhone;
+    delete payload.isPromo;
+    delete payload.promoUnitPrice;
+    delete payload.catalogUnitPrice;
 
     const [row] = await db('recharge_requests').insert(payload).returning('*');
     return this.mapRow(row);

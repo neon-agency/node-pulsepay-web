@@ -21,6 +21,11 @@ class ServersController {
     return res.status(200).json(data);
   }
 
+  async setPromo(req, res) {
+    const data = await serversService.setPromo(req.params.id, req.body);
+    return res.status(200).json(data);
+  }
+
   async remove(req, res) {
     await serversService.remove(req.params.id);
     return res.status(200).json({ success: true });

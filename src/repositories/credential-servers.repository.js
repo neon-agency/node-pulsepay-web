@@ -33,11 +33,20 @@ class CredentialServersRepository {
   mapRowWithServer(row) {
     if (!row) return null;
 
+    const promoExpiresAt = row.server_promo_expires_at
+      ? new Date(row.server_promo_expires_at).toISOString()
+      : null;
+    const promoActiveRaw = Boolean(row.server_promo_active);
+    const promoExpired = promoExpiresAt ? Date.now() >= new Date(promoExpiresAt).getTime() : false;
+
     return {
       ...this.mapRow(row),
       servidor: row.servidor,
       basePrice: Number(row.base_price),
-      serverPriceTiers: this.normalizePriceTiers(row.server_price_tiers)
+      serverPriceTiers: this.normalizePriceTiers(row.server_price_tiers),
+      serverPromoPriceTiers: this.normalizePriceTiers(row.server_promo_price_tiers),
+      serverPromoActive: promoActiveRaw && !promoExpired,
+      serverPromoExpiresAt: promoExpiresAt
     };
   }
 
@@ -51,7 +60,15 @@ class CredentialServersRepository {
   async findByCredentialIdWithServers(credentialId) {
     const rows = await db('credential_servers as cs')
       .innerJoin('servers as s', 's.id', 'cs.server_id')
-      .select('cs.*', 's.servidor', 's.base_price', 's.price_tiers as server_price_tiers')
+      .select(
+        'cs.*',
+        's.servidor',
+        's.base_price',
+        's.price_tiers as server_price_tiers',
+        's.promo_price_tiers as server_promo_price_tiers',
+        's.promo_active as server_promo_active',
+        's.promo_expires_at as server_promo_expires_at'
+      )
       .where({ 'cs.credential_id': credentialId })
       .orderBy('cs.created_at', 'desc');
 
@@ -70,6 +87,9 @@ class CredentialServersRepository {
         's.servidor',
         's.base_price',
         's.price_tiers as server_price_tiers',
+        's.promo_price_tiers as server_promo_price_tiers',
+        's.promo_active as server_promo_active',
+        's.promo_expires_at as server_promo_expires_at',
         'c.nome as credential_nome',
         'c.last4 as credential_last4',
         'c.client_id as credential_client_id'
@@ -82,7 +102,15 @@ class CredentialServersRepository {
   async findOneByCredentialAndServer(credentialId, serverId) {
     const row = await db('credential_servers as cs')
       .innerJoin('servers as s', 's.id', 'cs.server_id')
-      .select('cs.*', 's.servidor', 's.base_price', 's.price_tiers as server_price_tiers')
+      .select(
+        'cs.*',
+        's.servidor',
+        's.base_price',
+        's.price_tiers as server_price_tiers',
+        's.promo_price_tiers as server_promo_price_tiers',
+        's.promo_active as server_promo_active',
+        's.promo_expires_at as server_promo_expires_at'
+      )
       .where({
         'cs.credential_id': credentialId,
         'cs.server_id': serverId

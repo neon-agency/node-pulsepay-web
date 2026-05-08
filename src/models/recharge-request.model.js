@@ -14,7 +14,10 @@ class RechargeRequestModel {
     paymentStatus = 'pendente_pagamento',
     pixCode = null,
     pixTxid = null,
-    requestedByPhone = null
+    requestedByPhone = null,
+    isPromo = false,
+    promoUnitPrice = null,
+    catalogUnitPrice = null
   }) {
     this.id = id;
     this.credentialId = credentialId;
@@ -29,6 +32,9 @@ class RechargeRequestModel {
     this.pixCode = pixCode;
     this.pixTxid = pixTxid;
     this.requestedByPhone = requestedByPhone;
+    this.isPromo = isPromo;
+    this.promoUnitPrice = promoUnitPrice;
+    this.catalogUnitPrice = catalogUnitPrice;
   }
 }
 

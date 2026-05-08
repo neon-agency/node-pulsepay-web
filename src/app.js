@@ -10,6 +10,7 @@ const botRoutes = require('./routes/bot.routes');
 const pixKeysRoutes = require('./routes/pix-keys.routes');
 const whiteLabelRoutes = require('./routes/white-label.routes');
 const userPreferencesRoutes = require('./routes/user-preferences.routes');
+const noticesRoutes = require('./routes/notices.routes');
 const authMiddleware = require('./middlewares/auth.middleware');
 const errorHandler = require('./middlewares/error-handler');
 
@@ -34,6 +35,7 @@ app.use('/api/bot', botRoutes);
 app.use('/api/pix-keys', pixKeysRoutes);
 app.use('/api/white-label', whiteLabelRoutes);
 app.use('/api/user-preferences', userPreferencesRoutes);
+app.use('/api/notices', noticesRoutes);
 
 app.use(errorHandler);
 

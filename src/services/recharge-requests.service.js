@@ -9,28 +9,38 @@ const salesNotificationsService = require('./sales-notifications.service');
 const rechargeCancellationNotificationsService = require('./recharge-cancellation-notifications.service');
 
 class RechargeRequestsService {
-  resolveCatalogUnitPrice(link, quantity) {
+  resolveCatalogPricing(link, quantity) {
     const sortedServerTiers = [...(link?.serverPriceTiers || [])].sort((a, b) => a.quantity - b.quantity);
+    if (sortedServerTiers.length === 0) {
+      return { effectiveUnit: null, catalogUnit: null, promoUnit: null, isPromo: false };
+    }
+
     const overrideByQuantity = new Map(
       (link?.priceTiersOverride || []).map((tier) => [tier.quantity, tier.unitPrice])
     );
+    const promoActive = Boolean(link?.serverPromoActive);
+    const promoByQuantity = new Map(
+      (link?.serverPromoPriceTiers || []).map((tier) => [tier.quantity, tier.unitPrice])
+    );
 
-    const effectiveTiers = sortedServerTiers.map((tier) => ({
-      quantity: tier.quantity,
-      unitPrice: overrideByQuantity.get(tier.quantity) ?? tier.unitPrice
-    }));
+    const pickTier = () => {
+      const exact = sortedServerTiers.find((tier) => tier.quantity === quantity);
+      if (exact) return exact;
+      const gap = [...sortedServerTiers].reverse().find((tier) => tier.quantity <= quantity);
+      return gap ?? sortedServerTiers[0];
+    };
 
-    if (effectiveTiers.length === 0) {
-      return null;
-    }
+    const tier = pickTier();
+    const catalogUnit = overrideByQuantity.get(tier.quantity) ?? tier.unitPrice;
+    const promoUnit = promoByQuantity.get(tier.quantity) ?? null;
+    const isPromo = promoActive && promoUnit !== null;
+    const effectiveUnit = isPromo ? promoUnit : catalogUnit;
 
-    const exactTier = effectiveTiers.find((tier) => tier.quantity === quantity);
-    if (exactTier) return exactTier.unitPrice;
+    return { effectiveUnit, catalogUnit, promoUnit, isPromo };
+  }
 
-    const gapTier = [...effectiveTiers].reverse().find((tier) => tier.quantity <= quantity);
-    if (gapTier) return gapTier.unitPrice;
-
-    return effectiveTiers[0].unitPrice;
+  resolveCatalogUnitPrice(link, quantity) {
+    return this.resolveCatalogPricing(link, quantity).effectiveUnit;
   }
 
   parseQuantity(value) {
@@ -142,9 +152,14 @@ class RechargeRequestsService {
     }));
   }
 
-  async resolvePrice({ credentialId, serverId, quantity, unitPrice }) {
+  async resolvePricing({ credentialId, serverId, quantity, unitPrice }) {
     if (unitPrice !== undefined && unitPrice !== null) {
-      return this.parseMoney(unitPrice);
+      return {
+        unitPrice: this.parseMoney(unitPrice),
+        isPromo: false,
+        promoUnitPrice: null,
+        catalogUnitPrice: null
+      };
     }
 
     const link = await credentialServersRepository.findOneByCredentialAndServer(credentialId, serverId);
@@ -153,16 +168,36 @@ class RechargeRequestsService {
     }
 
     if (link.priceOverride !== null) {
-      return this.parseMoney(link.priceOverride);
+      return {
+        unitPrice: this.parseMoney(link.priceOverride),
+        isPromo: false,
+        promoUnitPrice: null,
+        catalogUnitPrice: this.parseMoney(link.priceOverride)
+      };
     }
 
-    const catalogUnitPrice = this.resolveCatalogUnitPrice(link, quantity);
-    if (catalogUnitPrice !== null) {
-      return this.parseMoney(catalogUnitPrice);
+    const pricing = this.resolveCatalogPricing(link, quantity);
+    if (pricing.effectiveUnit !== null) {
+      return {
+        unitPrice: this.parseMoney(pricing.effectiveUnit),
+        isPromo: pricing.isPromo,
+        promoUnitPrice: pricing.promoUnit !== null ? this.parseMoney(pricing.promoUnit) : null,
+        catalogUnitPrice: pricing.catalogUnit !== null ? this.parseMoney(pricing.catalogUnit) : null
+      };
     }
 
-    const effectivePrice = link.priceOverride === null ? link.basePrice : link.priceOverride;
-    return this.parseMoney(effectivePrice);
+    const fallback = link.basePrice;
+    return {
+      unitPrice: this.parseMoney(fallback),
+      isPromo: false,
+      promoUnitPrice: null,
+      catalogUnitPrice: this.parseMoney(fallback)
+    };
+  }
+
+  async resolvePrice(args) {
+    const { unitPrice } = await this.resolvePricing(args);
+    return unitPrice;
   }
 
   async create(payload, currentUser = null) {
@@ -185,13 +220,13 @@ class RechargeRequestsService {
     if (!credential) throw new AppError('Credencial não encontrada', 400);
     if (!server) throw new AppError('Servidor não encontrado', 400);
 
-    const unitPrice = await this.resolvePrice({
+    const pricing = await this.resolvePricing({
       credentialId,
       serverId,
       quantity,
       unitPrice: payload?.unitPrice
     });
-    const totalAmount = this.parseMoney(unitPrice * quantity);
+    const totalAmount = this.parseMoney(pricing.unitPrice * quantity);
 
     const created = await rechargeRequestsRepository.create(new RechargeRequestModel({
       credentialId,
@@ -199,11 +234,14 @@ class RechargeRequestsService {
       createdByUserId: currentUser?.id || null,
       accountLogin,
       quantity,
-      unitPrice,
+      unitPrice: pricing.unitPrice,
       totalAmount,
       paymentMethod,
       paymentStatus: 'pendente_pagamento',
-      requestedByPhone
+      requestedByPhone,
+      isPromo: pricing.isPromo,
+      promoUnitPrice: pricing.promoUnitPrice,
+      catalogUnitPrice: pricing.catalogUnitPrice
     }));
 
     return this.getById(created.id);
