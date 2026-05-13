@@ -4,7 +4,21 @@ const rechargeRequestsRepository = require('../repositories/recharge-requests.re
 const notificationsRepository = require('../repositories/recharge-request-notifications.repository');
 const usersRepository = require('../repositories/users.repository');
 const credentialsRepository = require('../repositories/credentials.repository');
+const whiteLabelRepository = require('../repositories/white-label.repository');
 const { createId } = require('../utils/id');
+
+const DEFAULT_BRAND_NAME = 'PulsePay';
+
+async function resolveBrandName(adminId) {
+  if (!adminId) return DEFAULT_BRAND_NAME;
+  try {
+    const wl = await whiteLabelRepository.findByUserId(adminId);
+    const name = wl?.systemName ? String(wl.systemName).trim() : '';
+    return name || DEFAULT_BRAND_NAME;
+  } catch (_error) {
+    return DEFAULT_BRAND_NAME;
+  }
+}
 
 class SalesNotificationsService {
   constructor() {
@@ -67,7 +81,7 @@ class SalesNotificationsService {
     }
   }
 
-  buildMessage(recharge, recipient) {
+  buildMessage(recharge, recipient, brandName) {
     const createdAt = recharge.updatedAt || recharge.createdAt;
     const formattedDate = new Date(createdAt).toLocaleString('pt-BR', {
       timeZone: 'America/Sao_Paulo'
@@ -77,6 +91,8 @@ class SalesNotificationsService {
       style: 'currency',
       currency: 'BRL'
     });
+
+    const brand = (brandName || DEFAULT_BRAND_NAME).toUpperCase();
 
     return [
       `Recarga concluída com sucesso ✅`,
@@ -92,7 +108,7 @@ class SalesNotificationsService {
       `Data/Hora: ${formattedDate}`,
       `Identificador: ${recharge.id}`,
       ``,
-      `EQUIPE PULSEPAY AGRADECE!`
+      `EQUIPE ${brand} AGRADECE!`
     ].join('\n');
   }
 
@@ -177,7 +193,8 @@ class SalesNotificationsService {
       }
 
       try {
-        await this.sendMessage(recipient.whatsappPhone, this.buildMessage(recharge, recipient));
+        const brandName = await resolveBrandName(recipient.adminId);
+        await this.sendMessage(recipient.whatsappPhone, this.buildMessage(recharge, recipient, brandName));
         await notificationsRepository.markSent(notification.id);
       } catch (error) {
         await notificationsRepository.markFailed(

@@ -5,7 +5,21 @@ const path = require('path');
 const integrationsService = require('./bot-integrations.service');
 const usersRepository = require('../repositories/users.repository');
 const notificationsRepository = require('../repositories/recharge-request-notifications.repository');
+const whiteLabelRepository = require('../repositories/white-label.repository');
 const { createId } = require('../utils/id');
+
+const DEFAULT_BRAND_NAME = 'PulsePay';
+
+async function resolveBrandName(adminId) {
+  if (!adminId) return DEFAULT_BRAND_NAME;
+  try {
+    const wl = await whiteLabelRepository.findByUserId(adminId);
+    const name = wl?.systemName ? String(wl.systemName).trim() : '';
+    return name || DEFAULT_BRAND_NAME;
+  } catch (_error) {
+    return DEFAULT_BRAND_NAME;
+  }
+}
 
 class PaymentProofNotificationsService {
   isLocalMediaRef(value) {
@@ -76,12 +90,13 @@ class PaymentProofNotificationsService {
     }
   }
 
-  buildMessage({ recharge, proof }) {
+  buildMessage({ recharge, proof, brandName }) {
     const revenda = recharge.createdByUserName || recharge.credentialNome || '-';
     const servidorNome = recharge.servidor || '-';
     const dataHora = new Date(recharge.updatedAt || recharge.createdAt || Date.now())
       .toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
     const valor = Number(recharge.totalAmount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    const brand = (brandName || DEFAULT_BRAND_NAME).toUpperCase();
 
     const lines = [
       'RECARGA SOLICITADA',
@@ -106,7 +121,7 @@ class PaymentProofNotificationsService {
       lines.push('', 'Comentário:', String(proof.caption));
     }
 
-    lines.push('', 'Painel Recarga:', this.getAdminUrl(), '', dataHora, 'RECARGA FÁCIL');
+    lines.push('', 'Painel Recarga:', this.getAdminUrl(), '', dataHora, brand);
 
     return lines.join('\n');
   }
@@ -205,7 +220,8 @@ class PaymentProofNotificationsService {
       }
 
       try {
-        await this.sendText(recipient.whatsappPhone, this.buildMessage({ recharge, proof }));
+        const brandName = await resolveBrandName(recipient.id);
+        await this.sendText(recipient.whatsappPhone, this.buildMessage({ recharge, proof, brandName }));
         if (mediaPayload) {
           await this.sendMedia(recipient.whatsappPhone, mediaPayload);
         }

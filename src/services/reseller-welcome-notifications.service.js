@@ -1,5 +1,19 @@
 const http = require('http');
 const https = require('https');
+const whiteLabelRepository = require('../repositories/white-label.repository');
+
+const DEFAULT_BRAND_NAME = 'PulsePay';
+
+async function resolveBrandName(adminId) {
+  if (!adminId) return DEFAULT_BRAND_NAME;
+  try {
+    const wl = await whiteLabelRepository.findByUserId(adminId);
+    const name = wl?.systemName ? String(wl.systemName).trim() : '';
+    return name || DEFAULT_BRAND_NAME;
+  } catch (_error) {
+    return DEFAULT_BRAND_NAME;
+  }
+}
 
 class ResellerWelcomeNotificationsService {
   getZapServiceUrl() {
@@ -52,9 +66,10 @@ class ResellerWelcomeNotificationsService {
     }
   }
 
-  buildMessage({ email, password }) {
+  buildMessage({ email, password, brandName }) {
+    const brand = (brandName || DEFAULT_BRAND_NAME).toUpperCase();
     return [
-      '*Seja bem vindo a nossa equipe !*',
+      '*SEJA BEM VINDO A NOSSA PLATAFORMA*',
       '',
       `*Login:* ${email}`,
       `*Senha:* ${password}`,
@@ -62,20 +77,22 @@ class ResellerWelcomeNotificationsService {
       '*Painel de Recarga:*',
       this.getPanelUrl(),
       '',
-      '*RECARGA FÁCIL*'
+      `*${brand}*`
     ].join('\n');
   }
 
-  async notify({ phone, email, password }) {
+  async notify({ phone, email, password, adminId }) {
     if (!phone || !email || !password) return false;
     const connected = await this.isZapConnected();
     if (!connected) return false;
+
+    const brandName = await resolveBrandName(adminId);
 
     await this.makeRequest(`${this.getZapServiceUrl()}/api/send`, {
       method: 'POST',
       payload: {
         number: phone,
-        message: this.buildMessage({ email, password })
+        message: this.buildMessage({ email, password, brandName })
       }
     });
 

@@ -65,7 +65,8 @@ class UsersService {
         await resellerWelcomeNotificationsService.notify({
           phone: user.whatsappPhone,
           email: user.email,
-          password: plainPassword
+          password: plainPassword,
+          adminId: user.adminId
         });
       } catch (error) {
         console.error('Falha ao enviar boas-vindas da revenda:', error);
@@ -110,7 +111,8 @@ class UsersService {
     const sent = await resellerWelcomeNotificationsService.notify({
       phone: user.whatsappPhone,
       email: user.email,
-      password: plainPassword
+      password: plainPassword,
+      adminId: user.adminId || adminId
     });
 
     if (!sent) {
