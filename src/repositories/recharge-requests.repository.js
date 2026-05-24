@@ -72,7 +72,8 @@ class RechargeRequestsRepository {
     cursor = null,
     search = null,
     status = null,
-    archived = false
+    archived = false,
+    requireProof = false
   } = {}) {
     let query = db('recharge_requests as rr')
       .innerJoin('servers as s', 's.id', 'rr.server_id')
@@ -109,6 +110,14 @@ class RechargeRequestsRepository {
       query = query.whereIn('rr.credential_id', credentialIds);
     }
 
+    if (requireProof) {
+      query = query.whereExists(function () {
+        this.select(db.raw('1'))
+          .from('recharge_request_payment_proofs as p')
+          .whereRaw('p.recharge_request_id = rr.id');
+      });
+    }
+
     if (status && status !== 'all') {
       query = query.where('rr.payment_status', status);
     }
@@ -138,7 +147,7 @@ class RechargeRequestsRepository {
     return rows.map((row) => this.mapListPageRow(row));
   }
 
-  async findAll({ credentialIds } = {}) {
+  async findAll({ credentialIds, requireProof = false } = {}) {
     let query = db('recharge_requests as rr')
       .innerJoin('credentials as c', 'c.id', 'rr.credential_id')
       .innerJoin('servers as s', 's.id', 'rr.server_id')
@@ -157,6 +166,14 @@ class RechargeRequestsRepository {
 
     if (Array.isArray(credentialIds) && credentialIds.length > 0) {
       query = query.whereIn('rr.credential_id', credentialIds);
+    }
+
+    if (requireProof) {
+      query = query.whereExists(function () {
+        this.select(db.raw('1'))
+          .from('recharge_request_payment_proofs as p')
+          .whereRaw('p.recharge_request_id = rr.id');
+      });
     }
 
     const rows = await query;

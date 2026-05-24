@@ -5,6 +5,7 @@ const credentialsRepository = require('../repositories/credentials.repository');
 const credentialServersRepository = require('../repositories/credential-servers.repository');
 const serversRepository = require('../repositories/servers.repository');
 const clientsRepository = require('../repositories/clients.repository');
+const pixKeysRepository = require('../repositories/pix-keys.repository');
 const pixKeysService = require('./pix-keys.service');
 const {
   normalizeCredentialName,
@@ -234,6 +235,71 @@ class CredentialsService {
     }
 
     const rows = normalized.map((item) => new CredentialServerModel({
+      credentialId,
+      serverId: item.serverId,
+      priceOverride: item.priceOverride,
+      priceTiersOverride: item.priceTiersOverride,
+      isActive: item.isActive,
+      email: item.email,
+      login: item.login,
+      pixKeyId: item.pixKeyId
+    }));
+
+    await credentialServersRepository.replaceAll(credentialId, rows);
+    return this.listServers(credentialId);
+  }
+
+  async replaceServersForReseller(credentialId, linksPayload, { clientId, adminId }) {
+    const credential = await this.getById(credentialId);
+    if (!clientId || credential.clientId !== clientId) {
+      throw new AppError('Acesso negado', 403);
+    }
+
+    if (!Array.isArray(linksPayload)) {
+      throw new AppError('O campo "servers" deve ser uma lista', 400);
+    }
+
+    const defaultPix = adminId
+      ? await pixKeysRepository.findDefaultByUser(adminId)
+      : null;
+
+    const sanitized = linksPayload.map((item) => {
+      const serverId = String(item?.serverId || '').trim();
+      if (!serverId) {
+        throw new AppError('Cada vínculo precisa de "serverId"', 400);
+      }
+      const loginRaw = item?.login;
+      const login = loginRaw === undefined || loginRaw === null || String(loginRaw).trim() === ''
+        ? null
+        : String(loginRaw).trim();
+      return {
+        serverId,
+        isActive: item?.isActive !== false,
+        login,
+        email: null,
+        pixKeyId: defaultPix?.id || null,
+        priceOverride: null,
+        priceTiersOverride: []
+      };
+    });
+
+    const uniqueServerIds = new Set();
+    for (const item of sanitized) {
+      if (uniqueServerIds.has(item.serverId)) {
+        throw new AppError(`Servidor duplicado no vínculo: ${item.serverId}`, 400);
+      }
+      uniqueServerIds.add(item.serverId);
+    }
+
+    const servers = await serversRepository.findAll();
+    const validServerIds = new Set(servers.map((server) => String(server.id)));
+    for (const item of sanitized) {
+      if (!validServerIds.has(item.serverId)) {
+        throw new AppError(`Servidor não encontrado: ${item.serverId}`, 400);
+      }
+    }
+
+    const rows = sanitized.map((item) => new CredentialServerModel({
       credentialId,
       serverId: item.serverId,
       priceOverride: item.priceOverride,
