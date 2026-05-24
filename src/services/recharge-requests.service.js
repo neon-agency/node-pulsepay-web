@@ -59,8 +59,11 @@ class RechargeRequestsService {
     return Number(parsed.toFixed(2));
   }
 
-  async list({ credentialIds } = {}) {
-    const rows = await rechargeRequestsRepository.findAll({ credentialIds: credentialIds || null });
+  async list({ credentialIds, requireProof = false } = {}) {
+    const rows = await rechargeRequestsRepository.findAll({
+      credentialIds: credentialIds || null,
+      requireProof
+    });
     return this.enrichWithPaymentProof(rows);
   }
 
@@ -83,7 +86,8 @@ class RechargeRequestsService {
     cursor,
     search,
     status,
-    archived
+    archived,
+    requireProof = false
   } = {}) {
     const effectiveLimit = Math.min(Math.max(Number(limit) || 50, 1), 200);
 
@@ -93,7 +97,8 @@ class RechargeRequestsService {
       cursor,
       search,
       status,
-      archived
+      archived,
+      requireProof
     });
 
     if (rows.length === 0) {

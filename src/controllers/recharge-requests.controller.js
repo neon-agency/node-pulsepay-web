@@ -59,7 +59,8 @@ class RechargeRequestsController {
       credentialIds = [String(req.query.credentialId)];
     }
 
-    const data = await rechargeRequestsService.list({ credentialIds });
+    const requireProof = req.user?.role !== 'reseller';
+    const data = await rechargeRequestsService.list({ credentialIds, requireProof });
     const filtered = canSeeServerCost(req.user) ? data : data.map(stripServerCost);
     return res.status(200).json(filtered);
   }
@@ -88,13 +89,15 @@ class RechargeRequestsController {
       }
     }
 
+    const requireProof = req.user?.role !== 'reseller';
     const data = await rechargeRequestsService.pageBundle({
       credentialIds,
       limit,
       cursor: parsedCursor,
       search: typeof search === 'string' ? search : null,
       status: typeof status === 'string' ? status : null,
-      archived: archived === 'true' || archived === true
+      archived: archived === 'true' || archived === true,
+      requireProof
     });
 
     const encodedNextCursor = data.nextCursor

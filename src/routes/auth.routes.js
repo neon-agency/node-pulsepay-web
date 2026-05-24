@@ -1,5 +1,6 @@
 const { Router } = require('express');
 const authController = require('../controllers/auth.controller');
+const invitesController = require('../controllers/invites.controller');
 const asyncHandler = require('../utils/async-handler');
 const authMiddleware = require('../middlewares/auth.middleware');
 const usersService = require('../services/users.service');
@@ -7,6 +8,7 @@ const usersService = require('../services/users.service');
 const authRoutes = Router();
 
 authRoutes.post('/login', asyncHandler((req, res) => authController.login(req, res)));
+authRoutes.post('/signup-from-invite', asyncHandler((req, res) => invitesController.signupFromInvite(req, res)));
 authRoutes.get('/me', authMiddleware, asyncHandler((req, res) => authController.me(req, res)));
 authRoutes.patch('/me', authMiddleware, asyncHandler(async (req, res) => {
   if (!req.user?.id) {

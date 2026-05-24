@@ -1,4 +1,5 @@
 const credentialsService = require('../services/credentials.service');
+const usersRepository = require('../repositories/users.repository');
 const AppError = require('../errors/app-error');
 
 function ensureAdmin(req) {
@@ -61,6 +62,19 @@ class CredentialsController {
   }
 
   async replaceServers(req, res) {
+    if (req.user?.role === 'reseller') {
+      const dbUser = await usersRepository.findById(req.user.id);
+      const data = await credentialsService.replaceServersForReseller(
+        req.params.id,
+        req.body?.servers || [],
+        {
+          clientId: req.user?.clientId || null,
+          adminId: dbUser?.adminId || null
+        }
+      );
+      return res.status(200).json(data);
+    }
+
     ensureAdmin(req);
     const data = await credentialsService.replaceServers(req.params.id, req.body?.servers || [], {
       userId: req.user?.id || null
