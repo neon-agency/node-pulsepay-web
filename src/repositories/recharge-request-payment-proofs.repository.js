@@ -13,6 +13,7 @@ class RechargeRequestPaymentProofsRepository {
     return {
       id: row.id,
       rechargeRequestId: row.recharge_request_id,
+      rechargeOrderId: row.recharge_order_id || null,
       senderPhone: row.sender_phone,
       metaMessageId: row.meta_message_id,
       metaMediaId: row.meta_media_id,
@@ -44,7 +45,8 @@ class RechargeRequestPaymentProofsRepository {
   async create(payload) {
     const baseInsert = {
       id: payload.id,
-      recharge_request_id: payload.rechargeRequestId,
+      recharge_request_id: payload.rechargeRequestId || null,
+      recharge_order_id: payload.rechargeOrderId || null,
       sender_phone: clamp(payload.senderPhone, 32),
       meta_message_id: clamp(payload.metaMessageId, 160),
       meta_media_id: clamp(payload.metaMediaId, 160),
@@ -90,6 +92,7 @@ class RechargeRequestPaymentProofsRepository {
           .insert({
             id: baseInsert.id,
             recharge_request_id: baseInsert.recharge_request_id,
+            recharge_order_id: baseInsert.recharge_order_id,
             sender_phone: baseInsert.sender_phone,
             meta_media_id: baseInsert.meta_media_id,
             review_status: baseInsert.review_status
@@ -201,6 +204,43 @@ class RechargeRequestPaymentProofsRepository {
       .whereIn('p.recharge_request_id', rechargeRequestIds)
       .orderBy([
         { column: 'p.recharge_request_id', order: 'asc' },
+        { column: 'p.created_at', order: 'desc' }
+      ]);
+
+    return rows.map((row) => this.mapRow(row));
+  }
+
+  async findLatestByOrderId(orderId) {
+    const row = await db('recharge_request_payment_proofs')
+      .where({ recharge_order_id: orderId })
+      .orderBy('created_at', 'desc')
+      .first();
+    return this.mapRow(row);
+  }
+
+  async findLatestByOrderIds(orderIds) {
+    if (!Array.isArray(orderIds) || orderIds.length === 0) return [];
+
+    const rows = await db('recharge_request_payment_proofs as p')
+      .distinctOn('p.recharge_order_id')
+      .select(
+        'p.id',
+        'p.recharge_order_id',
+        'p.review_status',
+        'p.caption',
+        'p.analysis_summary',
+        'p.analysis_confidence',
+        'p.extracted_amount',
+        'p.matches_expected_amount',
+        'p.matches_pix_identifier',
+        'p.reviewed_by_user_id',
+        'p.reviewed_at',
+        'p.created_at',
+        'p.updated_at'
+      )
+      .whereIn('p.recharge_order_id', orderIds)
+      .orderBy([
+        { column: 'p.recharge_order_id', order: 'asc' },
         { column: 'p.created_at', order: 'desc' }
       ]);
 
