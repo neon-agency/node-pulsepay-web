@@ -3,6 +3,7 @@ const AppError = require('../errors/app-error');
 const db = require('../database/knex');
 const invitesRepository = require('../repositories/invites.repository');
 const authService = require('./auth.service');
+const resellerWelcomeNotificationsService = require('./reseller-welcome-notifications.service');
 const { hashPassword } = require('../utils/password');
 const { createId } = require('../utils/id');
 const { sanitizeTelefone, isValidTelefone } = require('../utils/phone');
@@ -297,6 +298,20 @@ class InvitesService {
     });
 
     const { userRow } = result;
+
+    if (userRow.whatsapp_phone) {
+      try {
+        await resellerWelcomeNotificationsService.notify({
+          phone: userRow.whatsapp_phone,
+          email: userRow.email,
+          password: plainPassword,
+          adminId: userRow.admin_id || null
+        });
+      } catch (error) {
+        console.error('Falha ao enviar boas-vindas via convite:', error);
+      }
+    }
+
     const tokenVersion = typeof userRow.token_version === 'number' ? userRow.token_version : 0;
     const exp = Date.now() + 8 * 60 * 60 * 1000;
     const token = authService.createToken({
