@@ -25,7 +25,8 @@ function computeStatus(invite) {
   if (invite.expiresAt && new Date(invite.expiresAt).getTime() < Date.now()) {
     return 'expired';
   }
-  return 'active';
+  if ((invite.usageCount || 0) > 0) return 'active';
+  return 'pending';
 }
 
 function toPublicInvite(invite) {
@@ -103,6 +104,51 @@ class InvitesService {
     return toPublicInvite(updated);
   }
 
+  async hardDelete({ adminId, id }) {
+    if (!adminId) throw new AppError('Acesso negado', 403);
+    if (!id) throw new AppError('Convite inválido', 400);
+
+    const existing = await invitesRepository.findByIdScoped(adminId, id);
+    if (!existing) {
+      throw new AppError('Convite não encontrado', 404);
+    }
+
+    await invitesRepository.deleteById(id);
+    return { ok: true };
+  }
+
+  async renew({ adminId, id, expiresInDays }) {
+    if (!adminId) throw new AppError('Acesso negado', 403);
+    if (!id) throw new AppError('Convite inválido', 400);
+
+    const existing = await invitesRepository.findByIdScoped(adminId, id);
+    if (!existing) {
+      throw new AppError('Convite não encontrado', 404);
+    }
+
+    const requestedDays = Number(expiresInDays);
+    const days = Number.isFinite(requestedDays) && requestedDays > 0
+      ? Math.min(MAX_EXPIRES_IN_DAYS, Math.max(MIN_EXPIRES_IN_DAYS, Math.floor(requestedDays)))
+      : DEFAULT_EXPIRES_IN_DAYS;
+
+    const plainToken = generatePlainToken();
+    const tokenHash = hashToken(plainToken);
+    const tokenPreview = plainToken.slice(0, 8);
+    const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+
+    const updated = await invitesRepository.renewToken({
+      id,
+      tokenHash,
+      tokenPreview,
+      expiresAt
+    });
+
+    return {
+      ...toPublicInvite(updated),
+      token: plainToken
+    };
+  }
+
   async getPublicByToken(plainToken) {
     if (!plainToken) throw new AppError('Convite inválido', 400);
 
@@ -147,7 +193,6 @@ class InvitesService {
 
   async consumeAndSignup({ plainToken, name, email, password, whatsappPhone }) {
     if (!plainToken) throw new AppError('Convite inválido', 400);
-    if (!name || !String(name).trim()) throw new AppError('Nome é obrigatório', 400);
     if (!email || !String(email).trim()) throw new AppError('Email é obrigatório', 400);
 
     const normalizedEmail = String(email).trim().toLowerCase();
@@ -165,7 +210,12 @@ class InvitesService {
       throw new AppError('WhatsApp inválido. Informe entre 10 e 15 dígitos.', 400);
     }
 
-    const trimmedName = String(name).trim();
+    const rawName = String(name || '').trim();
+    const fallbackName = normalizedEmail.split('@')[0]
+      .replace(/[._-]+/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase())
+      .trim();
+    const trimmedName = rawName || fallbackName || 'Revenda';
     const tokenHash = hashToken(plainToken);
 
     const result = await db.transaction(async (trx) => {

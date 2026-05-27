@@ -15,6 +15,7 @@ invitesRoutes.use(authMiddleware, requireRole('admin'));
 
 invitesRoutes.get('/', asyncHandler((req, res) => invitesController.list(req, res)));
 invitesRoutes.post('/', asyncHandler((req, res) => invitesController.create(req, res)));
+invitesRoutes.post('/:id/renew', asyncHandler((req, res) => invitesController.renew(req, res)));
 invitesRoutes.delete('/:id', asyncHandler((req, res) => invitesController.revoke(req, res)));
 
 module.exports = invitesRoutes;

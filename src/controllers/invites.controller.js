@@ -15,10 +15,26 @@ class InvitesController {
   }
 
   async revoke(req, res) {
+    if (req.query?.hard === '1' || req.query?.hard === 'true') {
+      const data = await invitesService.hardDelete({
+        adminId: req.user?.id,
+        id: req.params.id
+      });
+      return res.status(200).json(data);
+    }
     const data = await invitesService.revoke({
       adminId: req.user?.id,
       id: req.params.id,
       userId: req.user?.id
+    });
+    return res.status(200).json(data);
+  }
+
+  async renew(req, res) {
+    const data = await invitesService.renew({
+      adminId: req.user?.id,
+      id: req.params.id,
+      expiresInDays: req.body?.expiresInDays
     });
     return res.status(200).json(data);
   }

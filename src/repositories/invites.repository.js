@@ -64,6 +64,25 @@ class InvitesRepository {
     return this.mapRow(row);
   }
 
+  async deleteById(id) {
+    return db('invites').where({ id }).del();
+  }
+
+  async renewToken({ id, tokenHash, tokenPreview, expiresAt }) {
+    const [row] = await db('invites')
+      .where({ id })
+      .update({
+        token_hash: tokenHash,
+        token_preview: tokenPreview,
+        expires_at: expiresAt,
+        revoked_at: null,
+        revoked_by_user_id: null,
+        updated_at: db.fn.now()
+      })
+      .returning('*');
+    return this.mapRow(row);
+  }
+
   async incrementUsage({ id, trx }) {
     const conn = trx || db;
     const [row] = await conn('invites')
