@@ -47,7 +47,6 @@ function normalizeTipo(tipoValue) {
 
 async function normalizePayload(payload, current = null) {
   const nome = payload?.nome !== undefined ? String(payload.nome).trim() : current?.nome;
-  const email = payload?.email !== undefined ? String(payload.email).trim().toLowerCase() : current?.email;
   const telefoneRaw =
     payload?.telefone !== undefined ? payload.telefone : current?.telefone;
   const telefone = sanitizeTelefone(telefoneRaw);
@@ -59,7 +58,6 @@ async function normalizePayload(payload, current = null) {
   const vencimentoRaw = payload?.vencimento !== undefined ? String(payload.vencimento).trim() : current?.vencimento;
 
   if (!nome) throw new AppError('Campo "nome" é obrigatório', 400);
-  if (!email) throw new AppError('Campo "email" é obrigatório', 400);
   if (!isValidTelefone(telefone)) {
     throw new AppError('Campo "telefone" é obrigatório (mín. 10 dígitos)', 400);
   }
@@ -99,7 +97,6 @@ async function normalizePayload(payload, current = null) {
 
   return {
     nome,
-    email,
     telefone,
     tipo,
     servidor: requiresServer ? servidor : null,
@@ -153,7 +150,7 @@ class ClientsService {
       db('users')
         .whereNotNull('client_id')
         .where({ role: 'reseller' })
-        .select('client_id as clientId', 'is_active as isActive')
+        .select('client_id as clientId', 'is_active as isActive', 'email')
     ]);
 
     const serverCountByClient = new Map(
@@ -162,9 +159,13 @@ class ClientsService {
     const userActiveByClient = new Map(
       userRows.map((row) => [row.clientId, Boolean(row.isActive)])
     );
+    const userEmailByClient = new Map(
+      userRows.map((row) => [row.clientId, row.email ?? null])
+    );
 
     const resellersWithCount = resellers.map((reseller) => ({
       ...reseller,
+      email: userEmailByClient.get(reseller.id) ?? null,
       serverCount: serverCountByClient.get(reseller.id) || 0,
       userIsActive: userActiveByClient.has(reseller.id)
         ? userActiveByClient.get(reseller.id)
@@ -186,11 +187,6 @@ class ClientsService {
   async create(payload) {
     const data = await normalizePayload(payload);
 
-    const duplicated = await clientsRepository.findByEmail(data.email);
-    if (duplicated) {
-      throw new AppError('Já existe cliente com esse email', 409);
-    }
-
     const item = new ClientModel(data);
     const created = await clientsRepository.create(item);
     await syncLinkedUserWhatsapp(created.id, created.telefone);
@@ -201,12 +197,29 @@ class ClientsService {
     const current = await this.getById(id);
     const data = await normalizePayload(payload, current);
 
-    const duplicated = await clientsRepository.findByEmail(data.email);
-    if (duplicated && duplicated.id !== current.id) {
-      throw new AppError('Já existe cliente com esse email', 409);
+    // O email da revenda é a credencial de login e vive apenas na tabela users.
+    // Quando o admin informa um email aqui, propagamos para o usuário vinculado.
+    const linkedUser = await usersRepository.findByClientId(current.id);
+    let nextEmail = null;
+    if (payload?.email !== undefined && linkedUser) {
+      const email = String(payload.email).trim().toLowerCase();
+      if (!/\S+@\S+\.\S+/.test(email)) {
+        throw new AppError('Email inválido', 400);
+      }
+      if (email !== linkedUser.email) {
+        const emailOwner = await usersRepository.findByEmail(email);
+        if (emailOwner && emailOwner.id !== linkedUser.id) {
+          throw new AppError('Já existe usuário com esse email', 409);
+        }
+        nextEmail = email;
+      }
     }
 
     const updated = await clientsRepository.update(current.id, data);
+
+    if (nextEmail) {
+      await usersRepository.updateProfile(linkedUser.id, { email: nextEmail });
+    }
     await syncLinkedUserWhatsapp(updated.id, updated.telefone);
     return updated;
   }

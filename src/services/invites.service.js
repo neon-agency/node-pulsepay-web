@@ -236,19 +236,11 @@ class InvitesService {
         throw new AppError('Já existe usuário com este email', 409);
       }
 
-      const emailInUseClient = await trx('clients')
-        .whereRaw('LOWER(email) = ?', [normalizedEmail])
-        .first();
-      if (emailInUseClient) {
-        throw new AppError('Já existe revenda com este email', 409);
-      }
-
       const clientId = createId();
       const [clientRow] = await trx('clients')
         .insert({
           id: clientId,
           nome: trimmedName,
-          email: normalizedEmail,
           telefone: phone,
           tipo: 'revenda',
           servidor_id: null,

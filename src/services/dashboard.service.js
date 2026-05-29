@@ -41,12 +41,13 @@ class DashboardService {
     let query = db('recharge_requests as rr')
       .innerJoin('credentials as c', 'c.id', 'rr.credential_id')
       .innerJoin('clients as cl', 'cl.id', 'c.client_id')
+      .leftJoin('users as u', 'u.client_id', 'cl.id')
       .where('rr.payment_status', 'pago')
-      .groupBy('cl.id', 'cl.nome', 'cl.email', 'cl.telefone', 'cl.tipo')
+      .groupBy('cl.id', 'cl.nome', 'u.email', 'cl.telefone', 'cl.tipo')
       .select(
         'cl.id as client_id',
         'cl.nome as client_nome',
-        'cl.email as client_email',
+        'u.email as client_email',
         'cl.telefone as client_telefone',
         'cl.tipo as client_tipo',
         db.raw('SUM(rr.quantity)::int as total_credits'),

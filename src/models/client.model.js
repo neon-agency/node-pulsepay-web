@@ -4,7 +4,6 @@ class ClientModel {
   constructor({
     id = createId(),
     nome,
-    email,
     telefone,
     tipo,
     servidor,
@@ -15,7 +14,6 @@ class ClientModel {
   }) {
     this.id = id;
     this.nome = nome;
-    this.email = email;
     this.telefone = telefone;
     this.tipo = tipo;
     this.servidor = servidor;

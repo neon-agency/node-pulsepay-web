@@ -7,7 +7,6 @@ class ClientsRepository {
     return {
       id: row.id,
       nome: row.nome,
-      email: row.email,
       telefone: row.telefone,
       tipo: row.tipo,
       servidor: row.servidor_id,
@@ -102,11 +101,6 @@ class ClientsRepository {
     if (!row) return null;
     const [enrichedRow] = await this.enrichRows([row]);
     return this.mapRow(enrichedRow);
-  }
-
-  async findByEmail(email) {
-    const row = await db('clients').whereRaw('LOWER(email) = ?', [String(email).toLowerCase()]).first();
-    return this.mapRow(row);
   }
 
   async create(client) {
