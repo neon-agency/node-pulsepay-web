@@ -4,7 +4,8 @@ class InvitesController {
   async create(req, res) {
     const data = await invitesService.create({
       adminId: req.user?.id,
-      expiresInDays: req.body?.expiresInDays
+      expiresInDays: req.body?.expiresInDays,
+      name: req.body?.name
     });
     return res.status(201).json(data);
   }

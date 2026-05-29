@@ -8,6 +8,7 @@ class InvitesRepository {
       id: row.id,
       tokenHash: row.token_hash,
       tokenPreview: row.token_preview,
+      name: row.name ?? null,
       adminId: row.admin_id,
       expiresAt: row.expires_at,
       usageCount: typeof row.usage_count === 'number' ? row.usage_count : Number(row.usage_count) || 0,
@@ -24,6 +25,7 @@ class InvitesRepository {
         id: payload.id,
         token_hash: payload.tokenHash,
         token_preview: payload.tokenPreview,
+        name: payload.name ?? null,
         admin_id: payload.adminId,
         expires_at: payload.expiresAt
       })

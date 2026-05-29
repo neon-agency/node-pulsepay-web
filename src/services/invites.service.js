@@ -34,6 +34,7 @@ function toPublicInvite(invite) {
   return {
     id: invite.id,
     tokenPreview: invite.tokenPreview,
+    name: invite.name ?? null,
     status: computeStatus(invite),
     expiresAt: invite.expiresAt,
     usageCount: invite.usageCount,
@@ -51,7 +52,7 @@ function todayDateOnly() {
 }
 
 class InvitesService {
-  async create({ adminId, expiresInDays }) {
+  async create({ adminId, expiresInDays, name }) {
     if (!adminId) throw new AppError('Acesso negado', 403);
 
     const requestedDays = Number(expiresInDays);
@@ -64,12 +65,15 @@ class InvitesService {
     const tokenPreview = plainToken.slice(0, 8);
     const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 
+    const trimmedName = name === undefined || name === null ? '' : String(name).trim();
+
     const invite = await invitesRepository.create({
       id: createId(),
       tokenHash,
       tokenPreview,
       adminId,
-      expiresAt
+      expiresAt,
+      name: trimmedName || null
     });
 
     return {
@@ -160,6 +164,7 @@ class InvitesService {
       .select(
         'invites.id as id',
         'invites.token_preview as token_preview',
+        'invites.name as invite_name',
         'invites.admin_id as admin_id',
         'invites.expires_at as expires_at',
         'invites.revoked_at as revoked_at',
@@ -188,7 +193,8 @@ class InvitesService {
     return {
       valid: true,
       expiresAt: invite.expiresAt,
-      adminName: row.admin_name || null
+      adminName: row.admin_name || null,
+      name: row.invite_name || null
     };
   }
 
@@ -216,7 +222,6 @@ class InvitesService {
       .replace(/[._-]+/g, ' ')
       .replace(/\b\w/g, (c) => c.toUpperCase())
       .trim();
-    const trimmedName = rawName || fallbackName || 'Revenda';
     const tokenHash = hashToken(plainToken);
 
     const result = await db.transaction(async (trx) => {
@@ -228,6 +233,10 @@ class InvitesService {
       const status = computeStatus(invite);
       if (status === 'revoked') throw new AppError('Convite foi revogado', 410);
       if (status === 'expired') throw new AppError('Convite expirado', 410);
+
+      // Nome definido no convite pelo admin prevalece sobre o que a revenda digitar.
+      const presetName = String(invite.name || '').trim();
+      const trimmedName = presetName || rawName || fallbackName || 'Revenda';
 
       const emailInUseUser = await trx('users')
         .whereRaw('LOWER(email) = ?', [normalizedEmail])
