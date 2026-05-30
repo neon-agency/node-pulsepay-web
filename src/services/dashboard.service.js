@@ -11,32 +11,74 @@ function safePercent(numerator, denominator) {
   return Number(((numerator / denominator) * 100).toFixed(2));
 }
 
-function startOf(period) {
-  const now = new Date();
-  if (period === 'dia') {
-    const d = new Date(now);
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }
-  if (period === 'semana') {
-    const d = new Date(now);
-    d.setDate(d.getDate() - 7);
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }
-  if (period === 'mes') {
-    const d = new Date(now);
-    d.setDate(d.getDate() - 30);
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }
-  return new Date(0);
+const APP_TIME_ZONE = process.env.APP_TIME_ZONE || 'America/Sao_Paulo';
+
+// Period filtering is by CALENDAR DATE in the business timezone — not a rolling
+// 24h window. "dia" = every row whose BRT date equals today's BRT date (00:00
+// to 23:59 of that calendar day). "semana"/"mes" = the last 7/30 calendar days
+// including today.
+const PERIOD_DAYS = { semana: 7, mes: 30 };
+
+// 'YYYY-MM-DD' for an instant, rendered in the business timezone.
+function brtDateStr(value) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: APP_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(new Date(value));
 }
+
+// Subtract whole calendar days from a 'YYYY-MM-DD' string (DST-proof: pure
+// calendar math in UTC, no clock involved).
+function dateStrMinusDays(dateStr, days) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() - days);
+  return dt.toISOString().slice(0, 10);
+}
+
+// Adds the period filter to a knex query by comparing the BRT calendar date of
+// `column` against today's BRT calendar date — entirely in SQL, so it does not
+// depend on the Node host timezone.
+function applyPeriodFilter(query, column, period) {
+  if (!period || period === 'all') return query;
+  if (period === 'dia') {
+    return query.whereRaw(
+      `(?? AT TIME ZONE ?)::date = (now() AT TIME ZONE ?)::date`,
+      [column, APP_TIME_ZONE, APP_TIME_ZONE]
+    );
+  }
+  const days = PERIOD_DAYS[period];
+  if (!days) return query;
+  return query.whereRaw(
+    `(?? AT TIME ZONE ?)::date >= (now() AT TIME ZONE ?)::date - ?`,
+    [column, APP_TIME_ZONE, APP_TIME_ZONE, days - 1]
+  );
+}
+
+// JS-side equivalent of applyPeriodFilter for in-memory rows (dashboard summary).
+function dateStrMatchesPeriod(recDateStr, todayStr, period) {
+  if (!period || period === 'all') return true;
+  if (period === 'dia') return recDateStr === todayStr;
+  const days = PERIOD_DAYS[period];
+  if (!days) return true;
+  return recDateStr >= dateStrMinusDays(todayStr, days - 1);
+}
+
+// SQL fragment: does this recharge_requests row (alias `rr`) have a payment proof
+// attached? A proof links either by recharge_request_id (legacy flow) or by
+// recharge_order_id (new orders flow). Used to keep proofless orders out of the
+// "solicitadas/pendentes" counters — only attached orders are counted.
+const HAS_PROOF_SQL = `EXISTS (
+  SELECT 1 FROM recharge_request_payment_proofs p
+  WHERE p.recharge_request_id = rr.id
+     OR (rr.order_id IS NOT NULL AND p.recharge_order_id = rr.order_id)
+) as has_proof`;
 
 class DashboardService {
   async resellersRanking({ period = 'all', limit = 20 } = {}) {
     const normalizedLimit = Math.min(Math.max(Number.parseInt(limit, 10) || 20, 1), 100);
-    const cutoff = period && period !== 'all' ? startOf(period) : null;
 
     let query = db('recharge_requests as rr')
       .innerJoin('credentials as c', 'c.id', 'rr.credential_id')
@@ -58,9 +100,7 @@ class DashboardService {
       .orderBy('total_amount', 'desc')
       .limit(normalizedLimit);
 
-    if (cutoff) {
-      query = query.where('rr.updated_at', '>=', cutoff);
-    }
+    query = applyPeriodFilter(query, 'rr.updated_at', period);
 
     const rows = await query;
 
@@ -80,7 +120,6 @@ class DashboardService {
 
   async serversRanking({ period = 'all', limit = 50 } = {}) {
     const normalizedLimit = Math.min(Math.max(Number.parseInt(limit, 10) || 50, 1), 200);
-    const cutoff = period && period !== 'all' ? startOf(period) : null;
 
     let query = db('recharge_requests as rr')
       .innerJoin('servers as s', 's.id', 'rr.server_id')
@@ -98,9 +137,7 @@ class DashboardService {
       .orderBy('total_credits', 'desc')
       .limit(normalizedLimit);
 
-    if (cutoff) {
-      query = query.where('rr.updated_at', '>=', cutoff);
-    }
+    query = applyPeriodFilter(query, 'rr.updated_at', period);
 
     const rows = await query;
 
@@ -126,7 +163,6 @@ class DashboardService {
     if (!clientId) {
       return { clientId: null, totals: { credits: 0, amount: 0, orders: 0 }, origins: [] };
     }
-    const cutoff = period && period !== 'all' ? startOf(period) : null;
 
     let query = db('recharge_requests as rr')
       .innerJoin('credentials as c', 'c.id', 'rr.credential_id')
@@ -142,9 +178,7 @@ class DashboardService {
       )
       .orderBy('total_amount', 'desc');
 
-    if (cutoff) {
-      query = query.where('rr.updated_at', '>=', cutoff);
-    }
+    query = applyPeriodFilter(query, 'rr.updated_at', period);
 
     const rows = await query;
 
@@ -170,7 +204,6 @@ class DashboardService {
   }
 
   async finances({ period = 'all' } = {}) {
-    const cutoff = period && period !== 'all' ? startOf(period) : null;
 
     // Single SQL: GROUP BY server, JOIN slim servers for name + custo. liquido computed in SQL.
     let query = db('recharge_requests as rr')
@@ -187,9 +220,7 @@ class DashboardService {
       )
       .orderBy('total_bruto', 'desc');
 
-    if (cutoff) {
-      query = query.where('rr.updated_at', '>=', cutoff);
-    }
+    query = applyPeriodFilter(query, 'rr.updated_at', period);
 
     const rows = await query;
 
@@ -223,7 +254,8 @@ class DashboardService {
       serverId: r.serverId ?? r.server_id ?? null,
       quantity: Number(r.quantity ?? 0),
       totalAmount: Number(r.totalAmount ?? r.total_amount ?? 0),
-      isPromo: Boolean(r.isPromo ?? r.is_promo ?? false)
+      isPromo: Boolean(r.isPromo ?? r.is_promo ?? false),
+      hasProof: Boolean(r.hasProof ?? r.has_proof ?? false)
     };
   }
 
@@ -235,8 +267,12 @@ class DashboardService {
     const custoByServerId = new Map(servers.map((s) => [String(s.id), Number(s.custoCredito ?? 0)]));
 
     const paidRecharges = normalized.filter((r) => r.paymentStatus === 'pago');
-    const startOfDay = startOf('dia');
-    const todayRecharges = normalized.filter((r) => r.createdAt && new Date(r.createdAt) >= startOfDay);
+    const todayStr = brtDateStr(new Date());
+    // Only count today's recharges that have a payment proof attached — a freshly
+    // created order with no proof yet is not a "solicitação" for the panel.
+    const todayRecharges = normalized.filter(
+      (r) => r.createdAt && r.hasProof && brtDateStr(r.createdAt) === todayStr
+    );
 
     const recargasDoDia = todayRecharges.reduce(
       (acc, r) => {
@@ -254,8 +290,9 @@ class DashboardService {
     const recargasPromocionais = {};
 
     for (const period of periods) {
-      const cutoff = startOf(period);
-      const subset = paidRecharges.filter((r) => new Date(r.createdAt) >= cutoff);
+      const subset = paidRecharges.filter(
+        (r) => r.createdAt && dateStrMatchesPeriod(brtDateStr(r.createdAt), todayStr, period)
+      );
       const totalQty = subset.reduce((acc, r) => acc + r.quantity, 0);
       const totalLucro = subset.reduce((acc, r) => {
         const custo = custoByServerId.get(String(r.serverId)) ?? 0;
@@ -320,7 +357,15 @@ class DashboardService {
     const [clients, servers, allRecharges] = await Promise.all([
       clientsRepository.findAll(),
       serversRepository.findAll(),
-      db('recharge_requests').select('server_id', 'quantity', 'total_amount', 'created_at', 'payment_status', 'is_promo')
+      db('recharge_requests as rr').select(
+        'rr.server_id',
+        'rr.quantity',
+        'rr.total_amount',
+        'rr.created_at',
+        'rr.payment_status',
+        'rr.is_promo',
+        db.raw(HAS_PROOF_SQL)
+      )
     ]);
 
     return this._computeSummary({ clients, servers, allRecharges });
@@ -341,12 +386,13 @@ class DashboardService {
     const [servers, clients, allRecharges] = await Promise.all([
       serversRepository.findAll(),
       db('clients').select('id', 'tipo', db.raw('servidor_id as servidor')),
-      db('recharge_requests').select(
-        'server_id',
-        'quantity',
-        'total_amount',
-        'payment_status',
-        'created_at'
+      db('recharge_requests as rr').select(
+        'rr.server_id',
+        'rr.quantity',
+        'rr.total_amount',
+        'rr.payment_status',
+        'rr.created_at',
+        db.raw(HAS_PROOF_SQL)
       )
     ]);
 

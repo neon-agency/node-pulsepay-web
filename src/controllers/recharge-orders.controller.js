@@ -97,7 +97,10 @@ class RechargeOrdersController {
     if (req.user?.role === 'reseller' && req.user?.clientId) {
       clientId = req.user.clientId;
     }
-    const count = await rechargeOrdersService.countPending(clientId);
+    // Admin/internal only count orders that already have a proof attached
+    // (mirrors the orders list, which hides proofless orders from reviewers).
+    const requireProof = req.user?.role !== 'reseller';
+    const count = await rechargeOrdersService.countPending(clientId, { requireProof });
     return res.status(200).json({ count });
   }
 

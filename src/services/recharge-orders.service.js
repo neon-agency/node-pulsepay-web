@@ -206,8 +206,8 @@ class RechargeOrdersService {
     return { rechargeOrders, nextCursor };
   }
 
-  async countPending(clientId = null) {
-    return rechargeOrdersRepository.countPending(clientId);
+  async countPending(clientId = null, options = {}) {
+    return rechargeOrdersRepository.countPending(clientId, options);
   }
 
   async approve(orderId) {

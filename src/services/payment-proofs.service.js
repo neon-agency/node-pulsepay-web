@@ -492,6 +492,23 @@ class PaymentProofsService {
       console.error('Falha ao salvar analise do comprovante de pedido:', error);
     }
 
+    try {
+      const items = await rechargeOrdersRepository.findItemsByOrderId(order.id);
+      await paymentProofNotificationsService.notifyPendingReviewForOrder({
+        order,
+        items,
+        proof: updatedProof
+      });
+    } catch (error) {
+      console.error('Falha ao notificar revisao de comprovante de pedido:', error);
+    }
+
+    try {
+      await this.notifyProofReceived(order, user);
+    } catch (error) {
+      console.error('Falha ao confirmar recebimento do comprovante de pedido:', error);
+    }
+
     return {
       order,
       proof: updatedProof

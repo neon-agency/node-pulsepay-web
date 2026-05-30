@@ -249,12 +249,20 @@ class RechargeOrdersRepository {
     return this.mapRow(row);
   }
 
-  async countPending(clientId = null) {
-    let query = db('recharge_orders')
-      .where({ archived: false })
-      .whereIn('payment_status', ['pendente_pagamento', 'pix_gerado']);
-    if (clientId) query = query.where({ client_id: clientId });
-    const result = await query.count('id as count').first();
+  async countPending(clientId = null, { requireProof = false } = {}) {
+    let query = db('recharge_orders as o')
+      .where('o.archived', false)
+      .whereIn('o.payment_status', ['pendente_pagamento', 'pix_gerado']);
+    if (clientId) query = query.where('o.client_id', clientId);
+    // Only count an order as pending once it has a payment proof attached.
+    if (requireProof) {
+      query = query.whereExists(function () {
+        this.select(db.raw('1'))
+          .from('recharge_request_payment_proofs as p')
+          .whereRaw('p.recharge_order_id = o.id');
+      });
+    }
+    const result = await query.count('o.id as count').first();
     return Number(result?.count || 0);
   }
 }

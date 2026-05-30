@@ -234,6 +234,118 @@ class PaymentProofNotificationsService {
       }
     }
   }
+
+  buildOrderMessage({ order, items, proof, brandName }) {
+    const first = items[0] || {};
+    const revenda = first.createdByUserName || first.credentialNome || '-';
+    const dataHora = new Date(order.updatedAt || order.createdAt || Date.now())
+      .toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+    const valor = Number(order.totalAmount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    const brand = (brandName || DEFAULT_BRAND_NAME).toUpperCase();
+
+    const lines = [
+      'RECARGA SOLICITADA',
+      '',
+      `Revendedor: ${revenda}`,
+      `Telefone: ${proof.senderPhone || '-'}`,
+      '',
+      `Pedido: ${order.id}`,
+      `Itens: ${items.length}`,
+      ''
+    ];
+
+    items.forEach((item, index) => {
+      lines.push(
+        `${index + 1}) ${item.servidor || '-'}`,
+        `   Login: ${item.accountLogin}`,
+        `   Quantidade: ${item.quantity}`
+      );
+      if (item.serverUrl) {
+        lines.push(`   ${item.serverUrl}`);
+      }
+    });
+
+    lines.push('', `Valor total: ${valor}`);
+
+    if (proof.caption) {
+      lines.push('', 'Comentário:', String(proof.caption));
+    }
+
+    lines.push('', 'Painel Recarga:', this.getAdminUrl(), '', dataHora, brand);
+
+    return lines.join('\n');
+  }
+
+  async notifyPendingReviewForOrder({ order, items, proof }) {
+    const orderItems = Array.isArray(items) ? items : [];
+    const recipients = await usersRepository.findAllAdminsWithWhatsapp();
+    if (recipients.length === 0) {
+      return;
+    }
+
+    // Anchor dedup/retry bookkeeping on a real recharge_requests row (order items
+    // are recharge_requests), keeping the notifications FK valid.
+    const anchorId = orderItems[0]?.id || order.id;
+
+    const connected = await this.isZapConnected();
+    let mediaPayload = null;
+    if (proof.metaMediaId || proof.fileContentBase64) {
+      try {
+        let file;
+        if (proof.fileContentBase64) {
+          file = {
+            mimeType: proof.mimeType || 'application/octet-stream',
+            buffer: Buffer.from(proof.fileContentBase64, 'base64')
+          };
+        } else if (this.isInlineMediaRef(proof.metaMediaId)) {
+          throw new Error('Comprovante inline sem conteudo no banco');
+        } else if (this.isLocalMediaRef(proof.metaMediaId)) {
+          file = {
+            mimeType: proof.mimeType || 'application/octet-stream',
+            buffer: await fs.readFile(this.getLocalPathFromMediaRef(proof.metaMediaId))
+          };
+        } else {
+          file = await integrationsService.downloadWhatsAppMedia(proof.metaMediaId);
+        }
+        const mimeType = file.mimeType || proof.mimeType || 'image/jpeg';
+        mediaPayload = {
+          caption: `Comprovante do pedido ${order.id}`,
+          mimeType,
+          fileName: proof.fileName || `comprovante-${order.id}`,
+          dataBase64: file.buffer.toString('base64'),
+          mediaType: String(mimeType).startsWith('image/') ? 'image' : 'document'
+        };
+      } catch (error) {
+        console.error('Falha ao preparar comprovante do pedido para envio ao GO-zap-service:', error);
+      }
+    }
+
+    for (const recipient of recipients) {
+      const notification = await this.ensureNotificationRow(anchorId, recipient.id, proof.id);
+      if (notification.deliveryStatus === 'sent') {
+        continue;
+      }
+
+      if (!connected) {
+        await notificationsRepository.markFailed(notification.id, 'GO-zap-service offline ou desconectado');
+        continue;
+      }
+
+      try {
+        const brandName = await resolveBrandName(recipient.id);
+        await this.sendText(recipient.whatsappPhone, this.buildOrderMessage({ order, items: orderItems, proof, brandName }));
+        if (mediaPayload) {
+          await this.sendMedia(recipient.whatsappPhone, mediaPayload);
+        }
+        await notificationsRepository.markSent(notification.id);
+      } catch (error) {
+        await notificationsRepository.markFailed(
+          notification.id,
+          error instanceof Error ? error.message : 'Falha ao notificar revisor'
+        );
+      }
+    }
+  }
 }
 
 module.exports = new PaymentProofNotificationsService();
