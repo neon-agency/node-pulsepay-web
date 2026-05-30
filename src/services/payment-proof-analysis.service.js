@@ -19,7 +19,7 @@ class PaymentProofAnalysisService {
   buildFallback(expectedAmount) {
     return {
       provider: 'fallback',
-      summary: 'Comprovante recebido. A analise automatica nao conseguiu validar a imagem com seguranca e a revisao humana e obrigatoria.',
+      summary: '',
       confidence: 0.15,
       extractedAmount: null,
       matchesExpectedAmount: null,
