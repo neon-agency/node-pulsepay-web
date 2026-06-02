@@ -15,8 +15,8 @@ const APP_TIME_ZONE = process.env.APP_TIME_ZONE || 'America/Sao_Paulo';
 
 // Period filtering is by CALENDAR DATE in the business timezone — not a rolling
 // 24h window. "dia" = every row whose BRT date equals today's BRT date (00:00
-// to 23:59 of that calendar day). "semana"/"mes" = the last 7/30 calendar days
-// including today.
+// to 23:59 of that calendar day). "semana"/"mes" = BRT date >= today minus 7/30
+// calendar days (so 7 → 8 days incl. today, 30 → 31 days incl. today).
 const PERIOD_DAYS = { semana: 7, mes: 30 };
 
 // 'YYYY-MM-DD' for an instant, rendered in the business timezone.
@@ -52,8 +52,8 @@ function applyPeriodFilter(query, column, period) {
   const days = PERIOD_DAYS[period];
   if (!days) return query;
   return query.whereRaw(
-    `(?? AT TIME ZONE ?)::date >= (now() AT TIME ZONE ?)::date - ?`,
-    [column, APP_TIME_ZONE, APP_TIME_ZONE, days - 1]
+    `(?? AT TIME ZONE ?)::date >= (now() AT TIME ZONE ?)::date - ?::int`,
+    [column, APP_TIME_ZONE, APP_TIME_ZONE, days]
   );
 }
 
@@ -63,7 +63,7 @@ function dateStrMatchesPeriod(recDateStr, todayStr, period) {
   if (period === 'dia') return recDateStr === todayStr;
   const days = PERIOD_DAYS[period];
   if (!days) return true;
-  return recDateStr >= dateStrMinusDays(todayStr, days - 1);
+  return recDateStr >= dateStrMinusDays(todayStr, days);
 }
 
 // SQL fragment: does this recharge_requests row (alias `rr`) have a payment proof
