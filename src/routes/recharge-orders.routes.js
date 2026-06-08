@@ -11,6 +11,7 @@ rechargeOrdersRoutes.get('/:id', authMiddleware, asyncHandler((req, res) => rech
 rechargeOrdersRoutes.get('/:id/payment-proof/file', authMiddleware, asyncHandler((req, res) => rechargeOrdersController.downloadLatestPaymentProofFile(req, res)));
 rechargeOrdersRoutes.post('/:id/payment-proof', authMiddleware, asyncHandler((req, res) => rechargeOrdersController.uploadPaymentProof(req, res)));
 rechargeOrdersRoutes.patch('/:id/payment-proof/review', authMiddleware, asyncHandler((req, res) => rechargeOrdersController.reviewLatestPaymentProof(req, res)));
+rechargeOrdersRoutes.patch('/:id/items/:itemId/review', authMiddleware, asyncHandler((req, res) => rechargeOrdersController.reviewItem(req, res)));
 rechargeOrdersRoutes.post('/', authMiddleware, asyncHandler((req, res) => rechargeOrdersController.create(req, res)));
 rechargeOrdersRoutes.patch('/:id/archive', authMiddleware, asyncHandler((req, res) => rechargeOrdersController.archive(req, res)));
 rechargeOrdersRoutes.patch('/:id/cancel', authMiddleware, asyncHandler((req, res) => rechargeOrdersController.cancel(req, res)));

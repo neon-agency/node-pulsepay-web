@@ -131,6 +131,25 @@ class RechargeOrdersController {
     return res.status(200).json(data);
   }
 
+  async reviewItem(req, res) {
+    if (req.user?.type !== 'internal' && req.user?.role !== 'admin') {
+      throw new AppError('Acesso negado', 403);
+    }
+
+    const { id, itemId } = req.params;
+    const decision = String(req.body?.decision || '').trim().toLowerCase();
+    if (!['approved', 'rejected'].includes(decision)) {
+      throw new AppError('Decisao invalida. Use approved ou rejected.', 400);
+    }
+
+    const updated =
+      decision === 'approved'
+        ? await rechargeOrdersService.approveItem(id, itemId, req.user || null)
+        : await rechargeOrdersService.rejectItem(id, itemId, req.user || null);
+
+    return res.status(200).json(canSeeServerCost(req.user) ? updated : stripServerCost(updated));
+  }
+
   async downloadLatestPaymentProofFile(req, res) {
     await ensureOrderAccess(req, req.params.id);
     const file = await paymentProofsService.downloadProofFileForOrder(req.params.id);

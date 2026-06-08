@@ -241,6 +241,33 @@ class RechargeOrdersRepository {
       .update({ payment_status: paymentStatus, updated_at: db.fn.now() });
   }
 
+  async findItemById(itemId) {
+    const row = await db('recharge_requests as rr')
+      .innerJoin('credentials as c', 'c.id', 'rr.credential_id')
+      .innerJoin('servers as s', 's.id', 'rr.server_id')
+      .leftJoin('users as u', 'u.id', 'rr.created_by_user_id')
+      .where({ 'rr.id': itemId })
+      .whereNotNull('rr.order_id')
+      .select(
+        'rr.*',
+        'c.nome as credential_nome',
+        'c.last4 as credential_last4',
+        's.servidor',
+        's.url as servidor_url',
+        's.custo_credito as server_unit_cost',
+        'u.name as created_by_user_name',
+        'u.email as created_by_user_email'
+      )
+      .first();
+    return this.mapItemRow(row);
+  }
+
+  async updateItemPaymentStatus(itemId, paymentStatus) {
+    return db('recharge_requests')
+      .where({ id: itemId })
+      .update({ payment_status: paymentStatus, updated_at: db.fn.now() });
+  }
+
   async archive(id) {
     const [row] = await db('recharge_orders')
       .where({ id })

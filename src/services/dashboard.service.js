@@ -57,6 +57,33 @@ function applyPeriodFilter(query, column, period) {
   );
 }
 
+// Validates a 'YYYY-MM' month string and returns { start, nextStart } as
+// 'YYYY-MM-DD' calendar-date bounds (first day of the month, first day of the
+// following month). Returns null if the string is malformed.
+function monthBounds(month) {
+  if (typeof month !== 'string') return null;
+  const match = /^(\d{4})-(\d{2})$/.exec(month.trim());
+  if (!match) return null;
+  const y = Number(match[1]);
+  const m = Number(match[2]);
+  if (m < 1 || m > 12) return null;
+  const pad = (n) => String(n).padStart(2, '0');
+  const start = `${y}-${pad(m)}-01`;
+  const nextStart = m === 12 ? `${y + 1}-01-01` : `${y}-${pad(m + 1)}-01`;
+  return { start, nextStart };
+}
+
+// Adds a calendar-month filter: BRT date of `column` within [start, nextStart).
+// Covers the 1st through the last day of the selected month, inclusive.
+function applyMonthFilter(query, column, month) {
+  const bounds = monthBounds(month);
+  if (!bounds) return query;
+  return query.whereRaw(
+    `(?? AT TIME ZONE ?)::date >= ?::date AND (?? AT TIME ZONE ?)::date < ?::date`,
+    [column, APP_TIME_ZONE, bounds.start, column, APP_TIME_ZONE, bounds.nextStart]
+  );
+}
+
 // JS-side equivalent of applyPeriodFilter for in-memory rows (dashboard summary).
 function dateStrMatchesPeriod(recDateStr, todayStr, period) {
   if (!period || period === 'all') return true;
@@ -203,7 +230,7 @@ class DashboardService {
     return { clientId, totals, origins };
   }
 
-  async finances({ period = 'all' } = {}) {
+  async finances({ period = 'all', month = null } = {}) {
 
     // Single SQL: GROUP BY server, JOIN slim servers for name + custo. liquido computed in SQL.
     let query = db('recharge_requests as rr')
@@ -220,7 +247,13 @@ class DashboardService {
       )
       .orderBy('total_bruto', 'desc');
 
-    query = applyPeriodFilter(query, 'rr.updated_at', period);
+    // A valid `month` (YYYY-MM) overrides `period` and filters to that calendar
+    // month (1st → last day, BRT). Otherwise fall back to the rolling period.
+    if (monthBounds(month)) {
+      query = applyMonthFilter(query, 'rr.updated_at', month);
+    } else {
+      query = applyPeriodFilter(query, 'rr.updated_at', period);
+    }
 
     const rows = await query;
 

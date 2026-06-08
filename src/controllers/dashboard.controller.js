@@ -26,8 +26,8 @@ class DashboardController {
   }
 
   async finances(req, res) {
-    const { period } = req.query || {};
-    const data = await dashboardService.finances({ period });
+    const { period, month } = req.query || {};
+    const data = await dashboardService.finances({ period, month });
     return res.status(200).json(data);
   }
 
