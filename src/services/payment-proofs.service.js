@@ -111,6 +111,15 @@ class PaymentProofsService {
     return Array.from(recipients).filter(Boolean);
   }
 
+  buildCustomerRejectedMessage(recharge) {
+    return [
+      'Nao conseguimos aprovar o comprovante enviado. ❌',
+      '',
+      `Recarga: ${recharge.id}`,
+      'Revise o pagamento e envie um novo comprovante para continuarmos a analise.'
+    ].join('\n');
+  }
+
   async notifyCustomerOutcome(recharge, decision) {
     const normalizedDecision = String(decision || '').trim().toLowerCase();
     if (normalizedDecision === 'approved') {
@@ -122,12 +131,7 @@ class PaymentProofsService {
       return;
     }
 
-    const message = [
-      'Nao conseguimos aprovar o comprovante enviado. ❌',
-      '',
-      `Recarga: ${recharge.id}`,
-      'Revise o pagamento e envie um novo comprovante para continuarmos a analise.'
-    ].join('\n');
+    const message = this.buildCustomerRejectedMessage(recharge);
 
     for (const number of recipients) {
       try {

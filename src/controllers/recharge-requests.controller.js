@@ -1,5 +1,6 @@
 const rechargeRequestsService = require('../services/recharge-requests.service');
 const paymentProofsService = require('../services/payment-proofs.service');
+const whatsappFallbackService = require('../services/whatsapp-fallback.service');
 const credentialsRepository = require('../repositories/credentials.repository');
 const pixKeysService = require('../services/pix-keys.service');
 const AppError = require('../errors/app-error');
@@ -215,6 +216,20 @@ class RechargeRequestsController {
     await ensureRechargeAccess(req, req.params.id);
     const data = await rechargeRequestsService.cancel(req.params.id, req.user || null);
     return res.status(200).json(data);
+  }
+
+  async whatsappFallback(req, res) {
+    await ensureRechargeAccess(req, req.params.id);
+    const type = String(req.query?.type || 'request');
+    let result;
+    if (type === 'paid') {
+      result = await whatsappFallbackService.paidFallback(req.params.id);
+    } else if (type === 'rejected') {
+      result = await whatsappFallbackService.rejectedFallback(req.params.id);
+    } else {
+      result = await whatsappFallbackService.requestFallback(req.params.id);
+    }
+    return res.status(200).json(result);
   }
 
   async pendingCount(req, res) {

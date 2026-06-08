@@ -1,5 +1,6 @@
 const rechargeOrdersService = require('../services/recharge-orders.service');
 const paymentProofsService = require('../services/payment-proofs.service');
+const whatsappFallbackService = require('../services/whatsapp-fallback.service');
 const AppError = require('../errors/app-error');
 
 function canSeeServerCost(user) {
@@ -174,6 +175,20 @@ class RechargeOrdersController {
     }
     const updated = await rechargeOrdersService.archive(req.params.id);
     return res.status(200).json(updated);
+  }
+
+  async whatsappFallback(req, res) {
+    await ensureOrderAccess(req, req.params.id);
+    const type = String(req.query?.type || 'request');
+    let result;
+    if (type === 'paid') {
+      result = await whatsappFallbackService.orderPaidFallback(req.params.id);
+    } else if (type === 'rejected') {
+      result = await whatsappFallbackService.orderRejectedFallback(req.params.id);
+    } else {
+      result = await whatsappFallbackService.orderRequestFallback(req.params.id);
+    }
+    return res.status(200).json(result);
   }
 }
 
