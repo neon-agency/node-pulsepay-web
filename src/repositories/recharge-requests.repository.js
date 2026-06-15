@@ -273,27 +273,6 @@ class RechargeRequestsRepository {
   async deleteById(id) {
     return db('recharge_requests').where({ id }).del();
   }
-
-  async findPaid() {
-    const rows = await db('recharge_requests as rr')
-      .innerJoin('credentials as c', 'c.id', 'rr.credential_id')
-      .innerJoin('servers as s', 's.id', 'rr.server_id')
-      .leftJoin('users as u', 'u.id', 'rr.created_by_user_id')
-      .select(
-        'rr.*',
-        'c.nome as credential_nome',
-        'c.last4 as credential_last4',
-        's.servidor',
-        's.url as servidor_url',
-        's.custo_credito as server_unit_cost',
-        'u.name as created_by_user_name',
-        'u.email as created_by_user_email'
-      )
-      .where({ 'rr.payment_status': 'pago' })
-      .orderBy('rr.updated_at', 'desc');
-
-    return rows.map((row) => this.mapRowWithRelations(row));
-  }
 }
 
 module.exports = new RechargeRequestsRepository();

@@ -33,8 +33,6 @@ const contentTypes = {
   ".json": "application/json; charset=utf-8"
 };
 
-const bot = require("./bot");
-
 function send(res, status, body, type = "text/plain; charset=utf-8") {
   res.writeHead(status, { "Content-Type": type });
   res.end(body);
@@ -59,52 +57,6 @@ http
     const normalizedPath = pathname.replace(/\/$/, "") || "/";
     
     console.log(`[${new Date().toLocaleTimeString()}] ${req.method} ${req.url}`);
-
-    // Webhook Handlers
-    if (normalizedPath === "/webhook") {
-      console.log(`[Webhook] Chamada recebida - Method: ${req.method}`);
-      console.log(`[Webhook] Headers: ${JSON.stringify(req.headers, null, 2)}`);
-      
-      if (req.method === "POST") {
-        let body = "";
-        req.on("data", (chunk) => body += chunk);
-        req.on("end", async () => {
-          try {
-            console.log("[Webhook] Body Recebido:", body);
-            // Tenta logar como JSON se possível
-            try {
-              const jsonBody = JSON.parse(body);
-              console.log("[Webhook] JSON Parseado:", JSON.stringify(jsonBody, null, 2));
-            } catch (e) {
-              console.log("[Webhook] Body não é JSON ou está malformatado");
-            }
-
-            const result = await bot.handleWebhook(body);
-            console.log("[Webhook] Processado com sucesso");
-            send(res, 200, "OK");
-          } catch (error) {
-            console.error("[Webhook] Erro crítico ao processar:", error);
-            send(res, 500, "Internal Server Error");
-          }
-        });
-        return;
-      }
-      
-      if (req.method === "GET") {
-        const params = new URLSearchParams(search);
-        console.log(`[Webhook] Query Params: ${params.toString()}`);
-        
-        const challenge = params.get("hub.challenge");
-        if (challenge) {
-          console.log("[Webhook] Respondendo hub.challenge:", challenge);
-          send(res, 200, challenge);
-          return;
-        }
-        console.log("[Webhook] GET simples recebido no endpoint");
-        send(res, 200, "Webhook endpoint ativo (GET)");
-        return;
-      }
-    }
 
     if (req.url.startsWith("/config.js")) {
       const pixKey = process.env.PIX_KEY || "";

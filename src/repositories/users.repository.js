@@ -34,24 +34,6 @@ class UsersRepository {
     return this.mapRow(row);
   }
 
-  async findAllActiveWithWhatsapp() {
-    const rows = await db('users')
-      .where({ is_active: true })
-      .whereNotNull('whatsapp_phone')
-      .orderBy('created_at', 'asc');
-
-    return rows.map((row) => this.mapRow(row));
-  }
-
-  async findAllAdminsWithWhatsapp() {
-    const rows = await db('users')
-      .where({ is_active: true, role: 'admin' })
-      .whereNotNull('whatsapp_phone')
-      .orderBy('created_at', 'asc');
-
-    return rows.map((row) => this.mapRow(row));
-  }
-
   async findFirstAdmin() {
     const row = await db('users')
       .where({ is_active: true, role: 'admin' })
@@ -62,25 +44,6 @@ class UsersRepository {
 
   async findByClientId(clientId) {
     const row = await db('users').where({ client_id: clientId }).first();
-    return this.mapRow(row);
-  }
-
-  async findActiveByClientIdWithWhatsapp(clientId) {
-    if (!clientId) return [];
-    const rows = await db('users')
-      .where({ client_id: clientId, is_active: true })
-      .whereNotNull('whatsapp_phone')
-      .orderBy('created_at', 'asc');
-    return rows.map((row) => this.mapRow(row));
-  }
-
-  async findByWhatsappPhone(phone) {
-    if (!phone) return null;
-    const normalized = String(phone).replace(/\D/g, '');
-    if (!normalized) return null;
-    const row = await db('users')
-      .whereRaw("regexp_replace(coalesce(whatsapp_phone,''), '\\D', '', 'g') = ?", [normalized])
-      .first();
     return this.mapRow(row);
   }
 

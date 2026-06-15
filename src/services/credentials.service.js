@@ -374,67 +374,6 @@ class CredentialsService {
       servers: availableServers
     };
   }
-
-  async resolveCredentialWithServers(payload) {
-    const nome = String(payload?.nome || '').trim();
-    const last4 = sanitizeLast4(payload?.last4);
-
-    if (!nome || last4.length !== 4) {
-      throw new AppError('Informe nome e 4 últimos dígitos válidos', 400);
-    }
-
-    const key = buildCredentialKey(normalizeCredentialName(nome), last4);
-    const matches = await credentialsRepository.findAllByCredentialKey(key);
-    if (matches.length === 0) {
-      throw new AppError('Credencial não encontrada', 404);
-    }
-    if (matches.length > 1) {
-      throw new AppError(
-        'Existem várias credenciais com esse nome e últimos dígitos; contate o suporte.',
-        409
-      );
-    }
-
-    const credential = matches[0];
-    const client = await clientsRepository.findById(credential.clientId);
-    if (!client) {
-      throw new AppError('Cliente da credencial não encontrado', 500);
-    }
-
-    const links = await credentialServersRepository.findByCredentialIdWithServers(credential.id);
-    const activeLinks = links.filter((link) => link.isActive);
-
-    const availableServers = activeLinks.map((link) => ({
-      id: link.id,
-      serverId: String(link.serverId),
-      servidor: link.servidor,
-      basePrice: link.basePrice,
-      priceOverride: link.priceOverride,
-      priceTiersOverride: link.priceTiersOverride,
-      priceTiers: this.buildEffectivePriceTiers(link.serverPriceTiers, link.priceTiersOverride, link.basePrice, {
-        promoActive: link.serverPromoActive,
-        promoPriceTiers: link.serverPromoPriceTiers
-      }),
-      effectivePrice: link.priceOverride === null ? link.basePrice : link.priceOverride,
-      email: link.email ?? null,
-      login: link.login ?? null
-    }));
-
-    return {
-      credential: {
-        id: credential.id,
-        nome: credential.nome,
-        last4: credential.last4,
-        clientId: client.id
-      },
-      client: {
-        id: client.id,
-        nome: client.nome,
-        telefone: client.telefone
-      },
-      servers: availableServers
-    };
-  }
 }
 
 module.exports = new CredentialsService();

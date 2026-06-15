@@ -5,8 +5,6 @@ const credentialsRepository = require('../repositories/credentials.repository');
 const serversRepository = require('../repositories/servers.repository');
 const rechargeRequestsRepository = require('../repositories/recharge-requests.repository');
 const paymentProofsRepository = require('../repositories/recharge-request-payment-proofs.repository');
-const salesNotificationsService = require('./sales-notifications.service');
-const rechargeCancellationNotificationsService = require('./recharge-cancellation-notifications.service');
 
 class RechargeRequestsService {
   resolveCatalogPricing(link, quantity) {
@@ -118,6 +116,7 @@ class RechargeRequestsService {
           ? {
               id: proof.id,
               reviewStatus: proof.reviewStatus,
+              reviewedAt: proof.reviewedAt ?? null,
               caption: proof.caption ?? null,
               analysisSummary: proof.analysisSummary ?? null,
               analysisConfidence: proof.analysisConfidence ?? null,
@@ -256,7 +255,7 @@ class RechargeRequestsService {
     const previous = await this.getById(id);
 
     const nextStatus = String(payload?.paymentStatus || '').trim();
-    const allowed = ['pendente_pagamento', 'pix_gerado', 'pago', 'cancelado'];
+    const allowed = ['pendente_pagamento', 'pix_gerado', 'pago', 'sem_creditos', 'cancelado'];
     if (!allowed.includes(nextStatus)) {
       throw new AppError('paymentStatus inválido', 400);
     }
@@ -286,7 +285,6 @@ class RechargeRequestsService {
           console.error('Falha ao decrementar estoque do servidor:', error);
         }
       }
-      await salesNotificationsService.processPaidRecharge(updated);
     }
 
     return updated;
@@ -335,15 +333,6 @@ class RechargeRequestsService {
     });
 
     const updated = await this.getById(id);
-
-    try {
-      await rechargeCancellationNotificationsService.notifyCancelled({
-        recharge: updated,
-        cancelledBy: currentUser
-      });
-    } catch (error) {
-      console.error('Falha ao notificar cancelamento de solicitação:', error);
-    }
 
     return updated;
   }

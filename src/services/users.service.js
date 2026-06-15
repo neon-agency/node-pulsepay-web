@@ -5,7 +5,6 @@ const clientsRepository = require('../repositories/clients.repository');
 const { sanitizeTelefone, isValidTelefone } = require('../utils/phone');
 const { hashPassword } = require('../utils/password');
 const { createId } = require('../utils/id');
-const resellerWelcomeNotificationsService = require('./reseller-welcome-notifications.service');
 
 function generateRandomPassword(length = 6) {
   const alphabet = '0123456789';
@@ -60,100 +59,7 @@ class UsersService {
       isActive: true
     });
 
-    if (role === 'reseller' && user.whatsappPhone) {
-      try {
-        await resellerWelcomeNotificationsService.notify({
-          phone: user.whatsappPhone,
-          email: user.email,
-          password: plainPassword,
-          adminId: user.adminId
-        });
-      } catch (error) {
-        console.error('Falha ao enviar boas-vindas da revenda:', error);
-      }
-    }
-
     return user;
-  }
-
-  async resendWelcome({ adminId, clientId }) {
-    if (!adminId) throw new AppError('Acesso negado', 403);
-    if (!clientId) throw new AppError('Revenda inválida', 400);
-
-    const user = await usersRepository.findByClientId(clientId);
-    if (!user || !user.isActive) {
-      throw new AppError('Usuário da revenda não encontrado', 404);
-    }
-    if (user.role !== 'reseller') {
-      throw new AppError('Usuário não é uma revenda', 400);
-    }
-    if (user.adminId && user.adminId !== adminId) {
-      throw new AppError('Acesso negado', 403);
-    }
-    if (!user.whatsappPhone) {
-      throw new AppError('Revenda sem WhatsApp cadastrado', 400);
-    }
-
-    const connected = await resellerWelcomeNotificationsService.isZapConnected();
-    if (!connected) {
-      throw new AppError('WhatsApp não está conectado. Conecte o serviço e tente novamente.', 503);
-    }
-
-    let plainPassword = user.welcomePassword;
-    if (!plainPassword) {
-      plainPassword = generateRandomPassword(6);
-      await usersRepository.updateProfile(user.id, {
-        passwordHash: hashPassword(plainPassword),
-        welcomePassword: plainPassword
-      });
-    }
-
-    const sent = await resellerWelcomeNotificationsService.notify({
-      phone: user.whatsappPhone,
-      email: user.email,
-      password: plainPassword,
-      adminId: user.adminId || adminId
-    });
-
-    if (!sent) {
-      throw new AppError('Falha ao enviar mensagem de boas-vindas', 502);
-    }
-
-    return { sent: true };
-  }
-
-  async prepareWelcomeLink({ adminId, clientId }) {
-    if (!adminId) throw new AppError('Acesso negado', 403);
-    if (!clientId) throw new AppError('Revenda inválida', 400);
-
-    const user = await usersRepository.findByClientId(clientId);
-    if (!user || !user.isActive) {
-      throw new AppError('Usuário da revenda não encontrado', 404);
-    }
-    if (user.role !== 'reseller') {
-      throw new AppError('Usuário não é uma revenda', 400);
-    }
-    if (user.adminId && user.adminId !== adminId) {
-      throw new AppError('Acesso negado', 403);
-    }
-    if (!user.whatsappPhone) {
-      throw new AppError('Revenda sem WhatsApp cadastrado', 400);
-    }
-
-    let plainPassword = user.welcomePassword;
-    if (!plainPassword) {
-      plainPassword = generateRandomPassword(6);
-      await usersRepository.updateProfile(user.id, {
-        passwordHash: hashPassword(plainPassword),
-        welcomePassword: plainPassword
-      });
-    }
-
-    return {
-      phone: user.whatsappPhone,
-      email: user.email,
-      password: plainPassword
-    };
   }
 
   async getById(id) {

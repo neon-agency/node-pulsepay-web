@@ -81,11 +81,6 @@ class CredentialsController {
     });
     return res.status(200).json(data);
   }
-
-  async resolveForBot(req, res) {
-    const data = await credentialsService.resolveCredentialWithServers(req.body || {});
-    return res.status(200).json(data);
-  }
 }
 
 module.exports = new CredentialsController();

@@ -7,8 +7,6 @@ const serversRepository = require('../repositories/servers.repository');
 const paymentProofsRepository = require('../repositories/recharge-request-payment-proofs.repository');
 const pixKeysService = require('./pix-keys.service');
 const pixKeysRepository = require('../repositories/pix-keys.repository');
-const salesNotificationsService = require('./sales-notifications.service');
-const rechargeCancellationNotificationsService = require('./recharge-cancellation-notifications.service');
 
 const DEFAULT_PIX_KEY = process.env.PIX_KEY || 'b0944752-7136-49ef-920a-0d21a3aa4be5';
 
@@ -188,6 +186,7 @@ class RechargeOrdersService {
           ? {
               id: proof.id,
               reviewStatus: proof.reviewStatus,
+              reviewedAt: proof.reviewedAt ?? null,
               caption: proof.caption ?? null,
               analysisSummary: proof.analysisSummary ?? null,
               analysisConfidence: proof.analysisConfidence ?? null,
@@ -216,7 +215,7 @@ class RechargeOrdersService {
     if (order.paymentStatus === 'pago') return this.getById(orderId);
 
     // Only act on items still pending — skip ones already resolved item-by-item
-    // (prevents double stock decrement / double sale notification).
+    // (prevents double stock decrement).
     const allItems = await rechargeOrdersRepository.findItemsByOrderId(orderId);
     const pendingItems = allItems.filter(
       (it) => it.paymentStatus !== 'pago' && it.paymentStatus !== 'cancelado'
@@ -235,17 +234,6 @@ class RechargeOrdersService {
         }
       })
     );
-
-    const results = await Promise.allSettled(
-      pendingItems.map((item) =>
-        salesNotificationsService.processPaidRecharge({ ...item, paymentStatus: 'pago' })
-      )
-    );
-    results.forEach((r, i) => {
-      if (r.status === 'rejected') {
-        console.error(`Falha ao notificar venda do item ${pendingItems[i].id}:`, r.reason);
-      }
-    });
 
     await this._syncOrderStatusFromItems(orderId);
     return this.getById(orderId);
@@ -267,15 +255,6 @@ class RechargeOrdersService {
 
     await Promise.all(
       pendingItems.map((it) => rechargeOrdersRepository.updateItemPaymentStatus(it.id, 'cancelado'))
-    );
-
-    await Promise.allSettled(
-      pendingItems.map((item) =>
-        rechargeCancellationNotificationsService.notifyCancelled({
-          recharge: { ...item, paymentStatus: 'cancelado' },
-          cancelledBy: currentUser
-        })
-      )
     );
 
     await this._syncOrderStatusFromItems(orderId);
@@ -320,12 +299,6 @@ class RechargeOrdersService {
       console.error(`Falha ao decrementar estoque item ${item.id}:`, error);
     }
 
-    try {
-      await salesNotificationsService.processPaidRecharge({ ...item, paymentStatus: 'pago' });
-    } catch (error) {
-      console.error(`Falha ao notificar venda do item ${item.id}:`, error);
-    }
-
     await this._syncOrderStatusFromItems(orderId);
     return this.getById(orderId);
   }
@@ -344,15 +317,6 @@ class RechargeOrdersService {
     }
 
     await rechargeOrdersRepository.updateItemPaymentStatus(itemId, 'cancelado');
-
-    try {
-      await rechargeCancellationNotificationsService.notifyCancelled({
-        recharge: { ...item, paymentStatus: 'cancelado' },
-        cancelledBy: currentUser
-      });
-    } catch (error) {
-      console.error(`Falha ao notificar cancelamento do item ${item.id}:`, error);
-    }
 
     await this._syncOrderStatusFromItems(orderId);
     return this.getById(orderId);
@@ -374,6 +338,50 @@ class RechargeOrdersService {
     const existing = await rechargeOrdersRepository.findById(id);
     if (!existing) throw new AppError('Pedido não encontrado', 404);
     return rechargeOrdersRepository.archive(id);
+  }
+
+  // "Sem creditos": marca o pedido sem alterar itens/comprovante, mantendo-o
+  // aprovavel depois (quando repor estoque).
+  async markNoCredits(orderId) {
+    const order = await rechargeOrdersRepository.findById(orderId);
+    if (!order) throw new AppError('Pedido não encontrado', 404);
+    if (order.paymentStatus === 'pago') {
+      throw new AppError('Pedido pago não pode ser marcado como sem créditos', 400);
+    }
+    if (order.paymentStatus !== 'sem_creditos') {
+      await rechargeOrdersRepository.updatePayment(orderId, { paymentStatus: 'sem_creditos' });
+    }
+    return this.getById(orderId);
+  }
+
+  async markItemNoCredits(orderId, itemId) {
+    const order = await rechargeOrdersRepository.findById(orderId);
+    if (!order) throw new AppError('Pedido não encontrado', 404);
+
+    const item = await rechargeOrdersRepository.findItemById(itemId);
+    if (!item || item.orderId !== orderId) {
+      throw new AppError('Item do pedido não encontrado', 404);
+    }
+    if (item.paymentStatus === 'pago') {
+      throw new AppError('Item pago não pode ser marcado como sem créditos', 400);
+    }
+    if (item.paymentStatus !== 'sem_creditos') {
+      await rechargeOrdersRepository.updateItemPaymentStatus(itemId, 'sem_creditos');
+    }
+    return this.getById(orderId);
+  }
+
+  async delete(id) {
+    const existing = await rechargeOrdersRepository.findById(id);
+    if (!existing) {
+      throw new AppError('Pedido não encontrado', 404);
+    }
+    if (existing.paymentStatus === 'pago') {
+      throw new AppError('Pedido pago não pode ser excluído', 400);
+    }
+    // Itens (linhas em recharge_requests com order_id) somem via FK onDelete CASCADE.
+    await rechargeOrdersRepository.deleteById(id);
+    return { id };
   }
 }
 

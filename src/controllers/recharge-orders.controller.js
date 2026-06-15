@@ -1,6 +1,5 @@
 const rechargeOrdersService = require('../services/recharge-orders.service');
 const paymentProofsService = require('../services/payment-proofs.service');
-const whatsappFallbackService = require('../services/whatsapp-fallback.service');
 const AppError = require('../errors/app-error');
 
 function canSeeServerCost(user) {
@@ -139,14 +138,18 @@ class RechargeOrdersController {
 
     const { id, itemId } = req.params;
     const decision = String(req.body?.decision || '').trim().toLowerCase();
-    if (!['approved', 'rejected'].includes(decision)) {
-      throw new AppError('Decisao invalida. Use approved ou rejected.', 400);
+    if (!['approved', 'rejected', 'sem_creditos'].includes(decision)) {
+      throw new AppError('Decisao invalida. Use approved, rejected ou sem_creditos.', 400);
     }
 
-    const updated =
-      decision === 'approved'
-        ? await rechargeOrdersService.approveItem(id, itemId, req.user || null)
-        : await rechargeOrdersService.rejectItem(id, itemId, req.user || null);
+    let updated;
+    if (decision === 'approved') {
+      updated = await rechargeOrdersService.approveItem(id, itemId, req.user || null);
+    } else if (decision === 'sem_creditos') {
+      updated = await rechargeOrdersService.markItemNoCredits(id, itemId);
+    } else {
+      updated = await rechargeOrdersService.rejectItem(id, itemId, req.user || null);
+    }
 
     return res.status(200).json(canSeeServerCost(req.user) ? updated : stripServerCost(updated));
   }
@@ -177,18 +180,12 @@ class RechargeOrdersController {
     return res.status(200).json(updated);
   }
 
-  async whatsappFallback(req, res) {
-    await ensureOrderAccess(req, req.params.id);
-    const type = String(req.query?.type || 'request');
-    let result;
-    if (type === 'paid') {
-      result = await whatsappFallbackService.orderPaidFallback(req.params.id);
-    } else if (type === 'rejected') {
-      result = await whatsappFallbackService.orderRejectedFallback(req.params.id);
-    } else {
-      result = await whatsappFallbackService.orderRequestFallback(req.params.id);
+  async delete(req, res) {
+    if (req.user?.type !== 'internal' && req.user?.role !== 'admin') {
+      throw new AppError('Acesso negado', 403);
     }
-    return res.status(200).json(result);
+    const data = await rechargeOrdersService.delete(req.params.id);
+    return res.status(200).json(data);
   }
 }
 

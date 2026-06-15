@@ -276,6 +276,10 @@ class RechargeOrdersRepository {
     return this.mapRow(row);
   }
 
+  async deleteById(id) {
+    return db('recharge_orders').where({ id }).del();
+  }
+
   async countPending(clientId = null, { requireProof = false } = {}) {
     let query = db('recharge_orders as o')
       .where('o.archived', false)
