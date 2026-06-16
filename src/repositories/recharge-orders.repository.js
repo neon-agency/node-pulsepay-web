@@ -34,6 +34,7 @@ class RechargeOrdersRepository {
       serverName: row.servidor,
       servidor: row.servidor,
       serverUrl: row.servidor_url ?? null,
+      serverLogin: row.server_login ?? null,
       serverUnitCost: row.server_unit_cost != null ? Number(row.server_unit_cost) : 0,
       accountLogin: row.account_login,
       quantity: Number(row.quantity),
@@ -122,6 +123,7 @@ class RechargeOrdersRepository {
         'c.last4 as credential_last4',
         's.servidor',
         's.url as servidor_url',
+        's.login as server_login',
         's.custo_credito as server_unit_cost',
         'u.name as created_by_user_name',
         'u.email as created_by_user_email'
@@ -143,6 +145,7 @@ class RechargeOrdersRepository {
         'c.last4 as credential_last4',
         's.servidor',
         's.url as servidor_url',
+        's.login as server_login',
         's.custo_credito as server_unit_cost',
         'u.name as created_by_user_name',
         'u.email as created_by_user_email'

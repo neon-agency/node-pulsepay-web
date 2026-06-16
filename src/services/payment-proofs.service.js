@@ -143,16 +143,16 @@ class PaymentProofsService {
     const { recharge, proof } = await this.getLatestByRechargeRequestId(rechargeRequestId);
     const normalizedDecision = String(decision || '').trim().toLowerCase();
 
-    if (!['approved', 'rejected', 'sem_creditos'].includes(normalizedDecision)) {
-      throw new AppError('Decisao invalida. Use approved, rejected ou sem_creditos.', 400);
+    if (!['approved', 'rejected', 'sem_creditos', 'comprovante_invalido'].includes(normalizedDecision)) {
+      throw new AppError('Decisao invalida. Use approved, rejected, sem_creditos ou comprovante_invalido.', 400);
     }
 
-    // "Sem creditos": marca a recarga como sem_creditos mas mantem o comprovante
-    // pendente (sem markReviewed) para continuar aprovavel quando repor estoque.
-    if (normalizedDecision === 'sem_creditos') {
-      if (recharge.paymentStatus !== 'sem_creditos') {
+    // Status "limbo" (sem_creditos / comprovante_invalido): marca a recarga mas
+    // mantem o comprovante pendente (sem markReviewed) para continuar aprovavel.
+    if (normalizedDecision === 'sem_creditos' || normalizedDecision === 'comprovante_invalido') {
+      if (recharge.paymentStatus !== normalizedDecision) {
         await rechargeRequestsService.updatePayment(rechargeRequestId, {
-          paymentStatus: 'sem_creditos',
+          paymentStatus: normalizedDecision,
           paymentMethod: recharge.paymentMethod,
           pixCode: recharge.pixCode,
           pixTxid: recharge.pixTxid
@@ -295,14 +295,14 @@ class PaymentProofsService {
     const rechargeOrdersService = require('./recharge-orders.service');
     const { proof } = await this.getLatestForOrder(rechargeOrderId);
     const normalizedDecision = String(decision || '').trim().toLowerCase();
-    if (!['approved', 'rejected', 'sem_creditos'].includes(normalizedDecision)) {
-      throw new AppError('Decisao invalida. Use approved, rejected ou sem_creditos.', 400);
+    if (!['approved', 'rejected', 'sem_creditos', 'comprovante_invalido'].includes(normalizedDecision)) {
+      throw new AppError('Decisao invalida. Use approved, rejected, sem_creditos ou comprovante_invalido.', 400);
     }
 
-    // "Sem creditos": marca o pedido sem revisar o comprovante (continua pending),
-    // mantendo-o aprovavel quando repor estoque.
-    if (normalizedDecision === 'sem_creditos') {
-      const updatedOrder = await rechargeOrdersService.markNoCredits(rechargeOrderId);
+    // Status "limbo": marca o pedido sem revisar o comprovante (continua pending),
+    // mantendo-o aprovavel depois.
+    if (normalizedDecision === 'sem_creditos' || normalizedDecision === 'comprovante_invalido') {
+      const updatedOrder = await rechargeOrdersService.markManualStatus(rechargeOrderId, normalizedDecision);
       return {
         order: updatedOrder,
         proof

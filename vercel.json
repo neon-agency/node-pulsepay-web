@@ -1,7 +1,7 @@
 {
   "rewrites": [
     {
-      "source": "/api/(auth|users|servers|clients|dashboard|credentials|recharge-requests|pix-keys|white-label|user-preferences|notices|invites|recharge-orders)(.*)",
+      "source": "/api/(auth|users|servers|clients|dashboard|credentials|recharge-requests|pix-keys|white-label|user-preferences|notices|invites|recharge-orders|store-settings)(.*)",
       "destination": "/api"
     },
     {

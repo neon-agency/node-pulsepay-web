@@ -340,21 +340,29 @@ class RechargeOrdersService {
     return rechargeOrdersRepository.archive(id);
   }
 
-  // "Sem creditos": marca o pedido sem alterar itens/comprovante, mantendo-o
-  // aprovavel depois (quando repor estoque).
-  async markNoCredits(orderId) {
+  // Status "limbo" (sem_creditos / comprovante_invalido): marca o pedido/item
+  // sem alterar comprovante, mantendo-o aprovavel depois.
+  async markManualStatus(orderId, status) {
+    const allowed = ['sem_creditos', 'comprovante_invalido'];
+    if (!allowed.includes(status)) {
+      throw new AppError('Status inválido', 400);
+    }
     const order = await rechargeOrdersRepository.findById(orderId);
     if (!order) throw new AppError('Pedido não encontrado', 404);
     if (order.paymentStatus === 'pago') {
-      throw new AppError('Pedido pago não pode ser marcado como sem créditos', 400);
+      throw new AppError('Pedido pago não pode mudar de status', 400);
     }
-    if (order.paymentStatus !== 'sem_creditos') {
-      await rechargeOrdersRepository.updatePayment(orderId, { paymentStatus: 'sem_creditos' });
+    if (order.paymentStatus !== status) {
+      await rechargeOrdersRepository.updatePayment(orderId, { paymentStatus: status });
     }
     return this.getById(orderId);
   }
 
-  async markItemNoCredits(orderId, itemId) {
+  async markItemManualStatus(orderId, itemId, status) {
+    const allowed = ['sem_creditos', 'comprovante_invalido'];
+    if (!allowed.includes(status)) {
+      throw new AppError('Status inválido', 400);
+    }
     const order = await rechargeOrdersRepository.findById(orderId);
     if (!order) throw new AppError('Pedido não encontrado', 404);
 
@@ -363,10 +371,10 @@ class RechargeOrdersService {
       throw new AppError('Item do pedido não encontrado', 404);
     }
     if (item.paymentStatus === 'pago') {
-      throw new AppError('Item pago não pode ser marcado como sem créditos', 400);
+      throw new AppError('Item pago não pode mudar de status', 400);
     }
-    if (item.paymentStatus !== 'sem_creditos') {
-      await rechargeOrdersRepository.updateItemPaymentStatus(itemId, 'sem_creditos');
+    if (item.paymentStatus !== status) {
+      await rechargeOrdersRepository.updateItemPaymentStatus(itemId, status);
     }
     return this.getById(orderId);
   }

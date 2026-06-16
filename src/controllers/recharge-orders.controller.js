@@ -10,7 +10,7 @@ function stripServerCost(order) {
   if (!order) return order;
   const items = Array.isArray(order.items)
     ? order.items.map((item) => {
-        const { serverUnitCost: _omit, ...rest } = item;
+        const { serverUnitCost: _omit, serverLogin: _omitLogin, ...rest } = item;
         return rest;
       })
     : order.items;
@@ -138,15 +138,15 @@ class RechargeOrdersController {
 
     const { id, itemId } = req.params;
     const decision = String(req.body?.decision || '').trim().toLowerCase();
-    if (!['approved', 'rejected', 'sem_creditos'].includes(decision)) {
-      throw new AppError('Decisao invalida. Use approved, rejected ou sem_creditos.', 400);
+    if (!['approved', 'rejected', 'sem_creditos', 'comprovante_invalido'].includes(decision)) {
+      throw new AppError('Decisao invalida. Use approved, rejected, sem_creditos ou comprovante_invalido.', 400);
     }
 
     let updated;
     if (decision === 'approved') {
       updated = await rechargeOrdersService.approveItem(id, itemId, req.user || null);
-    } else if (decision === 'sem_creditos') {
-      updated = await rechargeOrdersService.markItemNoCredits(id, itemId);
+    } else if (decision === 'sem_creditos' || decision === 'comprovante_invalido') {
+      updated = await rechargeOrdersService.markItemManualStatus(id, itemId, decision);
     } else {
       updated = await rechargeOrdersService.rejectItem(id, itemId, req.user || null);
     }

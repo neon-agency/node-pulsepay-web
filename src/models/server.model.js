@@ -12,11 +12,13 @@ class ServerModel {
     promoExpiresAt = null,
     custoCredito = 0,
     estoque = 0,
-    estoqueAlerta = null
+    estoqueAlerta = null,
+    login = null
   }) {
     this.id = id;
     this.servidor = servidor;
     this.url = url;
+    this.login = login;
     this.basePrice = basePrice;
     this.priceTiers = priceTiers;
     this.promoPriceTiers = promoPriceTiers;

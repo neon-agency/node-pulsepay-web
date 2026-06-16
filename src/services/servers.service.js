@@ -3,6 +3,12 @@ const ServerModel = require('../models/server.model');
 const serversRepository = require('../repositories/servers.repository');
 
 class ServersService {
+  parseLogin(value, fallback = null) {
+    if (value === undefined) return fallback;
+    const login = String(value ?? '').trim();
+    return login || null;
+  }
+
   parsePriceTiers(value, fallback = []) {
     if (value === undefined || value === null) {
       return Array.isArray(fallback) ? fallback : [];
@@ -176,6 +182,7 @@ class ServersService {
     const custoCredito = this.parseCustoCredito(payload?.custoCredito, 0);
     const estoque = this.parseEstoque(payload?.estoque, 0);
     const estoqueAlerta = this.parseEstoqueAlerta(payload?.estoqueAlerta, null);
+    const login = this.parseLogin(payload?.login, null);
 
     const item = new ServerModel({
       servidor,
@@ -187,7 +194,8 @@ class ServersService {
       promoExpiresAt: null,
       custoCredito,
       estoque,
-      estoqueAlerta
+      estoqueAlerta,
+      login
     });
     return serversRepository.create(item);
   }
@@ -225,6 +233,9 @@ class ServersService {
     const estoqueAlerta = payload?.estoqueAlerta !== undefined
       ? this.parseEstoqueAlerta(payload.estoqueAlerta, current.estoqueAlerta)
       : current.estoqueAlerta;
+    const login = payload?.login !== undefined
+      ? this.parseLogin(payload.login, current.login)
+      : current.login;
 
     return serversRepository.update(id, {
       servidor,
@@ -234,7 +245,8 @@ class ServersService {
       promoPriceTiers,
       custoCredito,
       estoque,
-      estoqueAlerta
+      estoqueAlerta,
+      login
     });
   }
 

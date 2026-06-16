@@ -42,7 +42,7 @@ function canSeeServerCost(user) {
 
 function stripServerCost(item) {
   if (!item) return item;
-  const { serverUnitCost: _omit, ...rest } = item;
+  const { serverUnitCost: _omit, serverLogin: _omitLogin, ...rest } = item;
   return rest;
 }
 

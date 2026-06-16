@@ -255,7 +255,7 @@ class RechargeRequestsService {
     const previous = await this.getById(id);
 
     const nextStatus = String(payload?.paymentStatus || '').trim();
-    const allowed = ['pendente_pagamento', 'pix_gerado', 'pago', 'sem_creditos', 'cancelado'];
+    const allowed = ['pendente_pagamento', 'pix_gerado', 'pago', 'sem_creditos', 'comprovante_invalido', 'cancelado'];
     if (!allowed.includes(nextStatus)) {
       throw new AppError('paymentStatus inválido', 400);
     }

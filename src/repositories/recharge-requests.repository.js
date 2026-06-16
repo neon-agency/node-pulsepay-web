@@ -36,6 +36,7 @@ class RechargeRequestsRepository {
       credentialLast4: row.credential_last4,
       servidor: row.servidor,
       servidorUrl: row.servidor_url ?? null,
+      serverLogin: row.server_login ?? null,
       serverUnitCost: row.server_unit_cost != null ? Number(row.server_unit_cost) : 0,
       createdByUserName: row.created_by_user_name,
       createdByUserEmail: row.created_by_user_email
@@ -49,6 +50,7 @@ class RechargeRequestsRepository {
       serverId: row.server_id,
       serverName: row.servidor,
       serverUrl: row.servidor_url ?? null,
+      serverLogin: row.server_login ?? null,
       accountLogin: row.account_login,
       credentialLast4: row.credential_last4,
       quantity: Number(row.quantity),
@@ -94,6 +96,7 @@ class RechargeRequestsRepository {
         'rr.created_at',
         's.servidor',
         's.url as servidor_url',
+        's.login as server_login',
         's.custo_credito as server_unit_cost',
         'c.last4 as credential_last4',
         'u.name as created_by_user_name',
@@ -158,6 +161,7 @@ class RechargeRequestsRepository {
         'c.last4 as credential_last4',
         's.servidor',
         's.url as servidor_url',
+        's.login as server_login',
         's.custo_credito as server_unit_cost',
         'u.name as created_by_user_name',
         'u.email as created_by_user_email'
@@ -191,6 +195,7 @@ class RechargeRequestsRepository {
         'c.last4 as credential_last4',
         's.servidor',
         's.url as servidor_url',
+        's.login as server_login',
         's.custo_credito as server_unit_cost',
         'u.name as created_by_user_name',
         'u.email as created_by_user_email'

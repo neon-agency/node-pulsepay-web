@@ -19,6 +19,7 @@ class ServersRepository {
       id: row.id,
       servidor: row.servidor,
       url: row.url,
+      login: row.login ?? null,
       basePrice: Number(row.base_price),
       priceTiers: this.normalizePriceTiers(row.price_tiers),
       promoPriceTiers: this.normalizePriceTiers(row.promo_price_tiers),
