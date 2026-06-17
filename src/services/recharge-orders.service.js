@@ -115,13 +115,12 @@ class RechargeOrdersService {
     const pix = await resolvePixForOrder(resolvedItems[0], currentUser);
 
     const clientId = currentUser?.clientId || null;
-    const initialStatus = paymentMethod === 'pix' ? 'pix_gerado' : 'pendente_pagamento';
 
     const order = new RechargeOrderModel({
       createdByUserId: currentUser?.id || null,
       clientId,
       paymentMethod,
-      paymentStatus: initialStatus,
+      status: 'SOLICITADO',
       totalAmount,
       itemCount: resolvedItems.length,
       pixCode: paymentMethod === 'pix' ? pix.chave : null,
@@ -209,129 +208,96 @@ class RechargeOrdersService {
     return rechargeOrdersRepository.countPending(clientId, options);
   }
 
-  async approve(orderId) {
+  // Marcador de execucao do item (toggle). Nao mexe em estoque — o estoque so e
+  // debitado quando o PEDIDO e concluido.
+  async setItemExecution(orderId, itemId, executed) {
     const order = await rechargeOrdersRepository.findById(orderId);
     if (!order) throw new AppError('Pedido não encontrado', 404);
-    if (order.paymentStatus === 'pago') return this.getById(orderId);
-
-    // Only act on items still pending — skip ones already resolved item-by-item
-    // (prevents double stock decrement).
-    const allItems = await rechargeOrdersRepository.findItemsByOrderId(orderId);
-    const pendingItems = allItems.filter(
-      (it) => it.paymentStatus !== 'pago' && it.paymentStatus !== 'cancelado'
-    );
-
-    await Promise.all(
-      pendingItems.map((it) => rechargeOrdersRepository.updateItemPaymentStatus(it.id, 'pago'))
-    );
-
-    await Promise.allSettled(
-      pendingItems.map(async (item) => {
-        try {
-          await serversRepository.decrementStock(item.serverId, item.quantity);
-        } catch (error) {
-          console.error(`Falha ao decrementar estoque item ${item.id}:`, error);
-        }
-      })
-    );
-
-    await this._syncOrderStatusFromItems(orderId);
-    return this.getById(orderId);
-  }
-
-  async reject(orderId, currentUser = null) {
-    const order = await rechargeOrdersRepository.findById(orderId);
-    if (!order) throw new AppError('Pedido não encontrado', 404);
-    if (order.paymentStatus === 'cancelado') return this.getById(orderId);
-    if (order.paymentStatus === 'pago') {
-      throw new AppError('Pedido pago não pode ser rejeitado', 400);
+    if (this._isTerminal(order.status)) {
+      throw new AppError('Pedido finalizado não pode ter itens alterados', 400);
     }
-
-    // Cancel only items still pending — leave any item already paid item-by-item intact.
-    const allItems = await rechargeOrdersRepository.findItemsByOrderId(orderId);
-    const pendingItems = allItems.filter(
-      (it) => it.paymentStatus !== 'pago' && it.paymentStatus !== 'cancelado'
-    );
-
-    await Promise.all(
-      pendingItems.map((it) => rechargeOrdersRepository.updateItemPaymentStatus(it.id, 'cancelado'))
-    );
-
-    await this._syncOrderStatusFromItems(orderId);
-    return this.getById(orderId);
-  }
-
-  async _syncOrderStatusFromItems(orderId) {
-    const items = await rechargeOrdersRepository.findItemsByOrderId(orderId);
-    if (items.length === 0) return;
-
-    const allResolved = items.every(
-      (it) => it.paymentStatus === 'pago' || it.paymentStatus === 'cancelado'
-    );
-    if (!allResolved) return;
-
-    const anyPaid = items.some((it) => it.paymentStatus === 'pago');
-    const nextStatus = anyPaid ? 'pago' : 'cancelado';
-
-    const order = await rechargeOrdersRepository.findById(orderId);
-    if (!order || order.paymentStatus === nextStatus) return;
-    await rechargeOrdersRepository.updatePayment(orderId, { paymentStatus: nextStatus });
-  }
-
-  async approveItem(orderId, itemId, currentUser = null) {
-    const order = await rechargeOrdersRepository.findById(orderId);
-    if (!order) throw new AppError('Pedido não encontrado', 404);
 
     const item = await rechargeOrdersRepository.findItemById(itemId);
     if (!item || item.orderId !== orderId) {
       throw new AppError('Item do pedido não encontrado', 404);
     }
-    if (item.paymentStatus === 'pago') return this.getById(orderId);
-    if (item.paymentStatus === 'cancelado') {
-      throw new AppError('Item cancelado não pode ser aprovado', 400);
+
+    const next = executed ? 'REALIZADO' : 'NAO_REALIZADO';
+    if (item.executionStatus !== next) {
+      await rechargeOrdersRepository.updateItemExecutionStatus(itemId, next);
     }
-
-    await rechargeOrdersRepository.updateItemPaymentStatus(itemId, 'pago');
-
-    try {
-      await serversRepository.decrementStock(item.serverId, item.quantity);
-    } catch (error) {
-      console.error(`Falha ao decrementar estoque item ${item.id}:`, error);
-    }
-
-    await this._syncOrderStatusFromItems(orderId);
     return this.getById(orderId);
   }
 
-  async rejectItem(orderId, itemId, currentUser = null) {
+  _isTerminal(status) {
+    return status === 'CONCLUIDO' || status === 'CANCELADO';
+  }
+
+  // Transicoes validas do pedido. CONCLUIDO depende da trava (todos REALIZADO).
+  _allowedTransitions(from) {
+    switch (from) {
+      case 'SOLICITADO':
+        return ['EM_ESPERA', 'CANCELADO', 'CONCLUIDO'];
+      case 'EM_ESPERA':
+        // Permite concluir direto um pedido pausado (os itens continuam
+        // editáveis em EM_ESPERA), além de retomar/cancelar.
+        return ['SOLICITADO', 'CANCELADO', 'CONCLUIDO'];
+      default:
+        return [];
+    }
+  }
+
+  async transitionStatus(orderId, target) {
+    const valid = ['SOLICITADO', 'EM_ESPERA', 'CONCLUIDO', 'CANCELADO'];
+    if (!valid.includes(target)) {
+      throw new AppError('Status inválido', 400);
+    }
+
     const order = await rechargeOrdersRepository.findById(orderId);
     if (!order) throw new AppError('Pedido não encontrado', 404);
+    if (order.status === target) return this.getById(orderId);
 
-    const item = await rechargeOrdersRepository.findItemById(itemId);
-    if (!item || item.orderId !== orderId) {
-      throw new AppError('Item do pedido não encontrado', 404);
-    }
-    if (item.paymentStatus === 'cancelado') return this.getById(orderId);
-    if (item.paymentStatus === 'pago') {
-      throw new AppError('Item pago não pode ser rejeitado', 400);
+    if (!this._allowedTransitions(order.status).includes(target)) {
+      throw new AppError(`Transição inválida: ${order.status} → ${target}`, 400);
     }
 
-    await rechargeOrdersRepository.updateItemPaymentStatus(itemId, 'cancelado');
+    if (target === 'CONCLUIDO') {
+      const items = await rechargeOrdersRepository.findItemsByOrderId(orderId);
+      if (items.length === 0) {
+        throw new AppError('Pedido sem itens não pode ser concluído', 400);
+      }
+      const pending = items.filter((it) => it.executionStatus !== 'REALIZADO');
+      if (pending.length > 0) {
+        throw new AppError(
+          `Conclua todos os itens antes: ${items.length - pending.length}/${items.length} realizados`,
+          400
+        );
+      }
 
-    await this._syncOrderStatusFromItems(orderId);
+      // Debita estoque de todos os itens uma unica vez (CONCLUIDO e terminal).
+      await Promise.allSettled(
+        items.map(async (item) => {
+          try {
+            await serversRepository.decrementStock(item.serverId, item.quantity);
+          } catch (error) {
+            console.error(`Falha ao decrementar estoque item ${item.id}:`, error);
+          }
+        })
+      );
+    }
+
+    await rechargeOrdersRepository.updateOrderStatus(orderId, target);
     return this.getById(orderId);
   }
 
   async cancelByOwner(orderId, currentUser = null) {
-    const existing = await this.getById(orderId);
-    if (existing.paymentStatus === 'cancelado') return existing;
-    if (existing.paymentStatus === 'pago') {
-      throw new AppError('Pedido pago não pode ser cancelado', 400);
+    const existing = await rechargeOrdersRepository.findById(orderId);
+    if (!existing) throw new AppError('Pedido não encontrado', 404);
+    if (existing.status === 'CANCELADO') return this.getById(orderId);
+    if (this._isTerminal(existing.status)) {
+      throw new AppError('Pedido finalizado não pode ser cancelado', 400);
     }
-    if (existing.latestPaymentProof) {
-      throw new AppError('Pedido com comprovante enviado não pode ser cancelado', 400);
-    }
-    return this.reject(orderId, currentUser);
+    return this.transitionStatus(orderId, 'CANCELADO');
   }
 
   async archive(id) {
@@ -340,52 +306,13 @@ class RechargeOrdersService {
     return rechargeOrdersRepository.archive(id);
   }
 
-  // Status "limbo" (sem_creditos / comprovante_invalido): marca o pedido/item
-  // sem alterar comprovante, mantendo-o aprovavel depois.
-  async markManualStatus(orderId, status) {
-    const allowed = ['sem_creditos', 'comprovante_invalido'];
-    if (!allowed.includes(status)) {
-      throw new AppError('Status inválido', 400);
-    }
-    const order = await rechargeOrdersRepository.findById(orderId);
-    if (!order) throw new AppError('Pedido não encontrado', 404);
-    if (order.paymentStatus === 'pago') {
-      throw new AppError('Pedido pago não pode mudar de status', 400);
-    }
-    if (order.paymentStatus !== status) {
-      await rechargeOrdersRepository.updatePayment(orderId, { paymentStatus: status });
-    }
-    return this.getById(orderId);
-  }
-
-  async markItemManualStatus(orderId, itemId, status) {
-    const allowed = ['sem_creditos', 'comprovante_invalido'];
-    if (!allowed.includes(status)) {
-      throw new AppError('Status inválido', 400);
-    }
-    const order = await rechargeOrdersRepository.findById(orderId);
-    if (!order) throw new AppError('Pedido não encontrado', 404);
-
-    const item = await rechargeOrdersRepository.findItemById(itemId);
-    if (!item || item.orderId !== orderId) {
-      throw new AppError('Item do pedido não encontrado', 404);
-    }
-    if (item.paymentStatus === 'pago') {
-      throw new AppError('Item pago não pode mudar de status', 400);
-    }
-    if (item.paymentStatus !== status) {
-      await rechargeOrdersRepository.updateItemPaymentStatus(itemId, status);
-    }
-    return this.getById(orderId);
-  }
-
   async delete(id) {
     const existing = await rechargeOrdersRepository.findById(id);
     if (!existing) {
       throw new AppError('Pedido não encontrado', 404);
     }
-    if (existing.paymentStatus === 'pago') {
-      throw new AppError('Pedido pago não pode ser excluído', 400);
+    if (existing.status === 'CONCLUIDO') {
+      throw new AppError('Pedido concluído não pode ser excluído', 400);
     }
     // Itens (linhas em recharge_requests com order_id) somem via FK onDelete CASCADE.
     await rechargeOrdersRepository.deleteById(id);

@@ -9,7 +9,7 @@ class RechargeOrdersRepository {
       createdByUserId: row.created_by_user_id,
       clientId: row.client_id,
       paymentMethod: row.payment_method,
-      paymentStatus: row.payment_status,
+      status: row.status,
       totalAmount: Number(row.total_amount),
       itemCount: Number(row.item_count),
       pixCode: row.pix_code,
@@ -40,7 +40,7 @@ class RechargeOrdersRepository {
       quantity: Number(row.quantity),
       unitPrice: Number(row.unit_price),
       totalAmount: Number(row.total_amount),
-      paymentStatus: row.payment_status,
+      executionStatus: row.execution_status,
       paymentMethod: row.payment_method,
       isPromo: Boolean(row.is_promo),
       promoUnitPrice: row.promo_unit_price != null ? Number(row.promo_unit_price) : null,
@@ -70,7 +70,7 @@ class RechargeOrdersRepository {
           created_by_user_id: order.createdByUserId,
           client_id: order.clientId,
           payment_method: order.paymentMethod,
-          payment_status: order.paymentStatus,
+          status: order.status,
           total_amount: order.totalAmount,
           item_count: order.itemCount,
           pix_code: order.pixCode,
@@ -91,7 +91,10 @@ class RechargeOrdersRepository {
         unit_price: item.unitPrice,
         total_amount: item.totalAmount,
         payment_method: order.paymentMethod,
-        payment_status: order.paymentStatus,
+        // payment_status e legado nesta tabela para itens de pedido; a execucao
+        // do item e controlada por execution_status. Mantido valido p/ o CHECK.
+        payment_status: order.paymentMethod === 'pix' ? 'pix_gerado' : 'pendente_pagamento',
+        execution_status: 'NAO_REALIZADO',
         pix_code: order.pixCode,
         pix_txid: order.pixTxid,
         requested_by_phone: order.requestedByPhone,
@@ -190,7 +193,7 @@ class RechargeOrdersRepository {
     }
 
     if (status && status !== 'all') {
-      query = query.where('o.payment_status', status);
+      query = query.where('o.status', status);
     }
 
     if (search && String(search).trim()) {
@@ -226,22 +229,12 @@ class RechargeOrdersRepository {
     return rows.map((row) => this.mapListPageRow(row));
   }
 
-  async updatePayment(id, updates) {
-    const payload = { updated_at: db.fn.now() };
-    if (updates.paymentStatus !== undefined) payload.payment_status = updates.paymentStatus;
-    if (updates.paymentMethod !== undefined) payload.payment_method = updates.paymentMethod;
-    if (updates.pixCode !== undefined) payload.pix_code = updates.pixCode;
-    if (updates.pixTxid !== undefined) payload.pix_txid = updates.pixTxid;
-    if (updates.pixKeyId !== undefined) payload.pix_key_id = updates.pixKeyId;
-
-    const [row] = await db('recharge_orders').where({ id }).update(payload).returning('*');
+  async updateOrderStatus(id, status) {
+    const [row] = await db('recharge_orders')
+      .where({ id })
+      .update({ status, updated_at: db.fn.now() })
+      .returning('*');
     return this.mapRow(row);
-  }
-
-  async updateItemsPaymentStatusByOrderId(orderId, paymentStatus) {
-    return db('recharge_requests')
-      .where({ order_id: orderId })
-      .update({ payment_status: paymentStatus, updated_at: db.fn.now() });
   }
 
   async findItemById(itemId) {
@@ -265,10 +258,10 @@ class RechargeOrdersRepository {
     return this.mapItemRow(row);
   }
 
-  async updateItemPaymentStatus(itemId, paymentStatus) {
+  async updateItemExecutionStatus(itemId, executionStatus) {
     return db('recharge_requests')
       .where({ id: itemId })
-      .update({ payment_status: paymentStatus, updated_at: db.fn.now() });
+      .update({ execution_status: executionStatus, updated_at: db.fn.now() });
   }
 
   async archive(id) {
@@ -286,7 +279,7 @@ class RechargeOrdersRepository {
   async countPending(clientId = null, { requireProof = false } = {}) {
     let query = db('recharge_orders as o')
       .where('o.archived', false)
-      .whereIn('o.payment_status', ['pendente_pagamento', 'pix_gerado']);
+      .where('o.status', 'SOLICITADO');
     if (clientId) query = query.where('o.client_id', clientId);
     // Only count an order as pending once it has a payment proof attached.
     if (requireProof) {

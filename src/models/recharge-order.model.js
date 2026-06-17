@@ -6,7 +6,7 @@ class RechargeOrderModel {
     createdByUserId = null,
     clientId = null,
     paymentMethod = 'pix',
-    paymentStatus = 'pendente_pagamento',
+    status = 'SOLICITADO',
     totalAmount,
     itemCount,
     pixCode = null,
@@ -18,7 +18,7 @@ class RechargeOrderModel {
     this.createdByUserId = createdByUserId;
     this.clientId = clientId;
     this.paymentMethod = paymentMethod;
-    this.paymentStatus = paymentStatus;
+    this.status = status;
     this.totalAmount = totalAmount;
     this.itemCount = itemCount;
     this.pixCode = pixCode;

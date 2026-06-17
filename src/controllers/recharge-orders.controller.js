@@ -117,40 +117,24 @@ class RechargeOrdersController {
     return res.status(201).json(data);
   }
 
-  async reviewLatestPaymentProof(req, res) {
-    if (req.user?.type !== 'internal' && req.user?.role !== 'admin') {
-      throw new AppError('Acesso negado', 403);
-    }
-
-    const data = await paymentProofsService.reviewLatestForOrder({
-      rechargeOrderId: req.params.id,
-      reviewedByUserId: req.user?.id || null,
-      decision: req.body?.decision,
-      reviewerNotes: req.body?.reviewerNotes
-    });
-    return res.status(200).json(data);
-  }
-
-  async reviewItem(req, res) {
+  async setItemExecution(req, res) {
     if (req.user?.type !== 'internal' && req.user?.role !== 'admin') {
       throw new AppError('Acesso negado', 403);
     }
 
     const { id, itemId } = req.params;
-    const decision = String(req.body?.decision || '').trim().toLowerCase();
-    if (!['approved', 'rejected', 'sem_creditos', 'comprovante_invalido'].includes(decision)) {
-      throw new AppError('Decisao invalida. Use approved, rejected, sem_creditos ou comprovante_invalido.', 400);
+    const executed = req.body?.executed === true || req.body?.executed === 'true';
+    const updated = await rechargeOrdersService.setItemExecution(id, itemId, executed);
+    return res.status(200).json(canSeeServerCost(req.user) ? updated : stripServerCost(updated));
+  }
+
+  async transitionStatus(req, res) {
+    if (req.user?.type !== 'internal' && req.user?.role !== 'admin') {
+      throw new AppError('Acesso negado', 403);
     }
 
-    let updated;
-    if (decision === 'approved') {
-      updated = await rechargeOrdersService.approveItem(id, itemId, req.user || null);
-    } else if (decision === 'sem_creditos' || decision === 'comprovante_invalido') {
-      updated = await rechargeOrdersService.markItemManualStatus(id, itemId, decision);
-    } else {
-      updated = await rechargeOrdersService.rejectItem(id, itemId, req.user || null);
-    }
-
+    const target = String(req.body?.status || '').trim().toUpperCase();
+    const updated = await rechargeOrdersService.transitionStatus(req.params.id, target);
     return res.status(200).json(canSeeServerCost(req.user) ? updated : stripServerCost(updated));
   }
 
