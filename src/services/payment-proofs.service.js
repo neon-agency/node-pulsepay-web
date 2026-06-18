@@ -126,6 +126,16 @@ class PaymentProofsService {
       console.error('Falha ao salvar analise do comprovante de pedido:', error);
     }
 
+    // Comprovante anexado → pedido virou solicitação real → push para o admin.
+    try {
+      const pushService = require('./push.service');
+      pushService
+        .notifyNewOrder(order)
+        .catch((err) => console.error('[push] notifyNewOrder falhou:', err));
+    } catch (err) {
+      console.error('[push] hook notifyNewOrder:', err);
+    }
+
     return {
       order,
       proof: updatedProof

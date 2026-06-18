@@ -12,6 +12,7 @@ const userPreferencesRoutes = require('./routes/user-preferences.routes');
 const noticesRoutes = require('./routes/notices.routes');
 const invitesRoutes = require('./routes/invites.routes');
 const storeSettingsRoutes = require('./routes/store-settings.routes');
+const pushRoutes = require('./routes/push.routes');
 const authMiddleware = require('./middlewares/auth.middleware');
 const errorHandler = require('./middlewares/error-handler');
 
@@ -38,6 +39,7 @@ app.use('/api/user-preferences', userPreferencesRoutes);
 app.use('/api/notices', noticesRoutes);
 app.use('/api/invites', invitesRoutes);
 app.use('/api/store-settings', storeSettingsRoutes);
+app.use('/api/push', pushRoutes);
 
 app.use(errorHandler);
 

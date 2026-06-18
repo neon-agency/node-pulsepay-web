@@ -287,7 +287,19 @@ class RechargeOrdersService {
     }
 
     await rechargeOrdersRepository.updateOrderStatus(orderId, target);
-    return this.getById(orderId);
+    const updated = await this.getById(orderId);
+
+    // Mudança de status → push para a revenda dona do pedido.
+    try {
+      const pushService = require('./push.service');
+      pushService
+        .notifyStatusChange(updated, target)
+        .catch((err) => console.error('[push] notifyStatusChange falhou:', err));
+    } catch (err) {
+      console.error('[push] hook notifyStatusChange:', err);
+    }
+
+    return updated;
   }
 
   async cancelByOwner(orderId, currentUser = null) {
