@@ -2,10 +2,27 @@ const AppError = require('../errors/app-error');
 const crypto = require('crypto');
 const { createId } = require('../utils/id');
 const { hashPassword, verifyPassword } = require('../utils/password');
-const { sanitizeTelefone, isValidTelefone } = require('../utils/phone');
+const { sanitizeTelefone, isValidTelefone, digitsOnly, normalizeBrMsisdn } = require('../utils/phone');
 const usersRepository = require('../repositories/users.repository');
 
 const TOKEN_TTL_MS = 8 * 60 * 60 * 1000;
+
+// Recuperação de senha por e-mail + últimos 4 dígitos do WhatsApp.
+// Mensagem genérica para não revelar se o e-mail existe nem qual campo falhou.
+const RESET_GENERIC_ERROR =
+  'Não foi possível redefinir a senha. Confira o e-mail e os últimos 4 dígitos do WhatsApp.';
+// Anti força-bruta: o espaço dos 4 dígitos é pequeno (10.000), então limitamos
+// tentativas por e-mail dentro de uma janela.
+const RESET_WINDOW_MS = 15 * 60 * 1000;
+const RESET_MAX_ATTEMPTS = 5;
+const resetAttempts = new Map();
+
+function timingSafeEqualStr(a, b) {
+  const bufA = Buffer.from(String(a));
+  const bufB = Buffer.from(String(b));
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
 
 function toBase64Url(value) {
   return Buffer.from(value)
@@ -186,6 +203,69 @@ class AuthService {
         whatsappPhone: user.whatsappPhone
       }
     };
+  }
+
+  registerResetAttempt(key) {
+    const now = Date.now();
+    const entry = resetAttempts.get(key);
+    if (!entry || now - entry.firstAt > RESET_WINDOW_MS) {
+      resetAttempts.set(key, { count: 1, firstAt: now });
+      return true;
+    }
+    if (entry.count >= RESET_MAX_ATTEMPTS) {
+      return false;
+    }
+    entry.count += 1;
+    return true;
+  }
+
+  clearResetAttempts(key) {
+    resetAttempts.delete(key);
+  }
+
+  async resetPasswordWithPhone(email, lastFourDigits, newPassword) {
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    const last4 = digitsOnly(lastFourDigits);
+    const password = String(newPassword ?? '');
+
+    if (!normalizedEmail || !/^\d{4}$/.test(last4)) {
+      throw new AppError('Informe o e-mail e os últimos 4 dígitos do WhatsApp.', 400);
+    }
+    if (password.length < 6) {
+      throw new AppError('A nova senha deve ter ao menos 6 caracteres.', 400);
+    }
+
+    if (!this.registerResetAttempt(normalizedEmail)) {
+      throw new AppError('Muitas tentativas. Tente novamente em alguns minutos.', 429);
+    }
+
+    let user = null;
+    try {
+      user = await usersRepository.findByEmail(normalizedEmail);
+    } catch (error) {
+      if (!this.isMissingUsersTable(error)) {
+        throw error;
+      }
+    }
+
+    // Só usuários reais (no banco) com WhatsApp cadastrado podem redefinir aqui.
+    // O admin de ambiente (.env) e contas sem telefone não são elegíveis.
+    const phoneDigits = user ? normalizeBrMsisdn(user.whatsappPhone || '') : '';
+    const userLast4 = phoneDigits.slice(-4);
+    const eligible = Boolean(user && user.isActive && phoneDigits.length >= 4);
+
+    if (!eligible || !timingSafeEqualStr(last4, userLast4)) {
+      throw new AppError(RESET_GENERIC_ERROR, 400);
+    }
+
+    await usersRepository.updateProfile(user.id, { passwordHash: hashPassword(password) });
+    // Invalida sessões/tokens existentes após a troca de senha.
+    if (typeof usersRepository.bumpTokenVersion === 'function') {
+      await usersRepository.bumpTokenVersion(user.id);
+    }
+    this.clearResetAttempts(normalizedEmail);
+
+    return { ok: true };
   }
 
   validateToken(token) {

@@ -9,6 +9,12 @@ class AuthController {
     return res.status(200).json(result);
   }
 
+  async forgotPassword(req, res) {
+    const { email, lastFourDigits, newPassword } = req.body || {};
+    const result = await authService.resetPasswordWithPhone(email, lastFourDigits, newPassword);
+    return res.status(200).json(result);
+  }
+
   async me(req, res) {
     const pixKeys = req.user?.id
       ? await pixKeysRepository.findAllByUser(req.user.id)
