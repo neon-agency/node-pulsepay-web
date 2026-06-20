@@ -17,6 +17,7 @@ class RechargeOrdersRepository {
       pixKeyId: row.pix_key_id,
       requestedByPhone: row.requested_by_phone,
       archived: Boolean(row.archived),
+      completedAt: row.completed_at ?? null,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -230,9 +231,14 @@ class RechargeOrdersRepository {
   }
 
   async updateOrderStatus(id, status) {
+    const payload = { status, updated_at: db.fn.now() };
+    if (status === 'CONCLUIDO') {
+      payload.completed_at = db.fn.now();
+    }
+
     const [row] = await db('recharge_orders')
       .where({ id })
-      .update({ status, updated_at: db.fn.now() })
+      .update(payload)
       .returning('*');
     return this.mapRow(row);
   }

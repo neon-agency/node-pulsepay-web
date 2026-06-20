@@ -38,25 +38,6 @@ function dateStrMinusDays(dateStr, days) {
   return dt.toISOString().slice(0, 10);
 }
 
-// Adds the period filter to a knex query by comparing the BRT calendar date of
-// `column` against today's BRT calendar date — entirely in SQL, so it does not
-// depend on the Node host timezone.
-function applyPeriodFilter(query, column, period) {
-  if (!period || period === 'all') return query;
-  if (period === 'dia') {
-    return query.whereRaw(
-      `(?? AT TIME ZONE ?)::date = (now() AT TIME ZONE ?)::date`,
-      [column, APP_TIME_ZONE, APP_TIME_ZONE]
-    );
-  }
-  const days = PERIOD_DAYS[period];
-  if (!days) return query;
-  return query.whereRaw(
-    `(?? AT TIME ZONE ?)::date >= (now() AT TIME ZONE ?)::date - ?::int`,
-    [column, APP_TIME_ZONE, APP_TIME_ZONE, days]
-  );
-}
-
 // Validates a 'YYYY-MM' month string and returns { start, nextStart } as
 // 'YYYY-MM-DD' calendar-date bounds (first day of the month, first day of the
 // following month). Returns null if the string is malformed.
@@ -73,18 +54,60 @@ function monthBounds(month) {
   return { start, nextStart };
 }
 
-// Adds a calendar-month filter: BRT date of `column` within [start, nextStart).
-// Covers the 1st through the last day of the selected month, inclusive.
-function applyMonthFilter(query, column, month) {
-  const bounds = monthBounds(month);
-  if (!bounds) return query;
+// New recharge orders use `recharge_orders.status` as the workflow source of
+// truth. Legacy standalone recharge_requests still use payment_status = pago.
+const COMPLETED_REVENUE_SQL = `(
+  (rr.order_id IS NOT NULL AND o.status = 'CONCLUIDO')
+  OR (rr.order_id IS NULL AND rr.payment_status = 'pago')
+)`;
+
+const REVENUE_AT_SQL = `CASE
+  WHEN rr.order_id IS NOT NULL THEN COALESCE(o.completed_at, o.updated_at)
+  ELSE rr.updated_at
+END`;
+
+const ORDER_KEY_SQL = 'COALESCE(rr.order_id, rr.id)';
+const ORDER_COUNT_SQL = `COUNT(DISTINCT ${ORDER_KEY_SQL})::int as total_orders`;
+
+function applyCompletedRevenueFilter(query) {
+  return query.whereRaw(COMPLETED_REVENUE_SQL);
+}
+
+function applyPeriodFilterExpression(query, expressionSql, period) {
+  if (!period || period === 'all') return query;
+  if (period === 'dia') {
+    return query.whereRaw(
+      `(${expressionSql} AT TIME ZONE ?)::date = (now() AT TIME ZONE ?)::date`,
+      [APP_TIME_ZONE, APP_TIME_ZONE]
+    );
+  }
+  const days = PERIOD_DAYS[period];
+  if (!days) return query;
   return query.whereRaw(
-    `(?? AT TIME ZONE ?)::date >= ?::date AND (?? AT TIME ZONE ?)::date < ?::date`,
-    [column, APP_TIME_ZONE, bounds.start, column, APP_TIME_ZONE, bounds.nextStart]
+    `(${expressionSql} AT TIME ZONE ?)::date >= (now() AT TIME ZONE ?)::date - ?::int`,
+    [APP_TIME_ZONE, APP_TIME_ZONE, days]
   );
 }
 
-// JS-side equivalent of applyPeriodFilter for in-memory rows (dashboard summary).
+function applyMonthFilterExpression(query, expressionSql, month) {
+  const bounds = monthBounds(month);
+  if (!bounds) return query;
+  return query.whereRaw(
+    `(${expressionSql} AT TIME ZONE ?)::date >= ?::date AND (${expressionSql} AT TIME ZONE ?)::date < ?::date`,
+    [APP_TIME_ZONE, bounds.start, APP_TIME_ZONE, bounds.nextStart]
+  );
+}
+
+function applyRevenuePeriodFilter(query, period) {
+  return applyPeriodFilterExpression(query, REVENUE_AT_SQL, period);
+}
+
+function applyRevenueWindowFilter(query, { period = 'all', month = null } = {}) {
+  if (monthBounds(month)) return applyMonthFilterExpression(query, REVENUE_AT_SQL, month);
+  return applyRevenuePeriodFilter(query, period);
+}
+
+// JS-side equivalent of the SQL period filters for in-memory rows.
 function dateStrMatchesPeriod(recDateStr, todayStr, period) {
   if (!period || period === 'all') return true;
   if (period === 'dia') return recDateStr === todayStr;
@@ -110,8 +133,8 @@ class DashboardService {
     let query = db('recharge_requests as rr')
       .innerJoin('credentials as c', 'c.id', 'rr.credential_id')
       .innerJoin('clients as cl', 'cl.id', 'c.client_id')
+      .leftJoin('recharge_orders as o', 'o.id', 'rr.order_id')
       .leftJoin('users as u', 'u.client_id', 'cl.id')
-      .where('rr.payment_status', 'pago')
       .groupBy('cl.id', 'cl.nome', 'u.email', 'cl.telefone', 'cl.tipo')
       .select(
         'cl.id as client_id',
@@ -121,13 +144,14 @@ class DashboardService {
         'cl.tipo as client_tipo',
         db.raw('SUM(rr.quantity)::int as total_credits'),
         db.raw('SUM(rr.total_amount)::numeric as total_amount'),
-        db.raw('COUNT(rr.id)::int as total_orders'),
-        db.raw('MAX(rr.updated_at) as last_purchase_at')
+        db.raw(ORDER_COUNT_SQL),
+        db.raw(`MAX(${REVENUE_AT_SQL}) as last_purchase_at`)
       )
       .orderBy('total_amount', 'desc')
       .limit(normalizedLimit);
 
-    query = applyPeriodFilter(query, 'rr.updated_at', period);
+    query = applyCompletedRevenueFilter(query);
+    query = applyRevenuePeriodFilter(query, period);
 
     const rows = await query;
 
@@ -150,7 +174,7 @@ class DashboardService {
 
     let query = db('recharge_requests as rr')
       .innerJoin('servers as s', 's.id', 'rr.server_id')
-      .where('rr.payment_status', 'pago')
+      .leftJoin('recharge_orders as o', 'o.id', 'rr.order_id')
       .groupBy('s.id', 's.servidor', 's.custo_credito')
       .select(
         's.id as server_id',
@@ -158,13 +182,14 @@ class DashboardService {
         's.custo_credito as custo_credito',
         db.raw('SUM(rr.quantity)::int as total_credits'),
         db.raw('SUM(rr.total_amount)::numeric as total_amount'),
-        db.raw('COUNT(rr.id)::int as total_orders'),
-        db.raw('MAX(rr.updated_at) as last_purchase_at')
+        db.raw(ORDER_COUNT_SQL),
+        db.raw(`MAX(${REVENUE_AT_SQL}) as last_purchase_at`)
       )
       .orderBy('total_credits', 'desc')
       .limit(normalizedLimit);
 
-    query = applyPeriodFilter(query, 'rr.updated_at', period);
+    query = applyCompletedRevenueFilter(query);
+    query = applyRevenuePeriodFilter(query, period);
 
     const rows = await query;
 
@@ -194,6 +219,7 @@ class DashboardService {
     let query = db('recharge_requests as rr')
       .innerJoin('credentials as c', 'c.id', 'rr.credential_id')
       .innerJoin('servers as s', 's.id', 'rr.server_id')
+      .leftJoin('recharge_orders as o', 'o.id', 'rr.order_id')
       .where('c.client_id', clientId)
       .groupBy('s.id', 's.servidor')
       .select(
@@ -201,11 +227,12 @@ class DashboardService {
         's.servidor as server_nome',
         db.raw('SUM(rr.quantity)::int as total_credits'),
         db.raw('SUM(rr.total_amount)::numeric as total_amount'),
-        db.raw('COUNT(rr.id)::int as total_orders')
+        db.raw(ORDER_COUNT_SQL)
       )
       .orderBy('total_amount', 'desc');
 
-    query = applyPeriodFilter(query, 'rr.updated_at', period);
+    query = applyCompletedRevenueFilter(query);
+    query = applyRevenuePeriodFilter(query, period);
 
     const rows = await query;
 
@@ -235,7 +262,7 @@ class DashboardService {
     // Single SQL: GROUP BY server, JOIN slim servers for name + custo. liquido computed in SQL.
     let query = db('recharge_requests as rr')
       .innerJoin('servers as s', 's.id', 'rr.server_id')
-      .where('rr.payment_status', 'pago')
+      .leftJoin('recharge_orders as o', 'o.id', 'rr.order_id')
       .groupBy('s.id', 's.servidor', 's.custo_credito')
       .select(
         's.id as server_id',
@@ -243,19 +270,24 @@ class DashboardService {
         db.raw('COALESCE(SUM(rr.quantity), 0)::int as total_credits'),
         db.raw('COALESCE(SUM(rr.total_amount), 0)::numeric as total_bruto'),
         db.raw('COALESCE(SUM(rr.total_amount) - SUM(rr.quantity) * s.custo_credito, 0)::numeric as total_liquido'),
-        db.raw('COUNT(rr.id)::int as total_orders')
+        db.raw(ORDER_COUNT_SQL)
       )
       .orderBy('total_bruto', 'desc');
 
+    query = applyCompletedRevenueFilter(query);
     // A valid `month` (YYYY-MM) overrides `period` and filters to that calendar
     // month (1st → last day, BRT). Otherwise fall back to the rolling period.
-    if (monthBounds(month)) {
-      query = applyMonthFilter(query, 'rr.updated_at', month);
-    } else {
-      query = applyPeriodFilter(query, 'rr.updated_at', period);
-    }
+    query = applyRevenueWindowFilter(query, { period, month });
 
-    const rows = await query;
+    let totalOrdersQuery = db('recharge_requests as rr')
+      .leftJoin('recharge_orders as o', 'o.id', 'rr.order_id')
+      .select(db.raw(ORDER_COUNT_SQL))
+      .first();
+
+    totalOrdersQuery = applyCompletedRevenueFilter(totalOrdersQuery);
+    totalOrdersQuery = applyRevenueWindowFilter(totalOrdersQuery, { period, month });
+
+    const [rows, totalOrdersRow] = await Promise.all([query, totalOrdersQuery]);
 
     const servidores = rows.map((row) => ({
       serverId: row.server_id,
@@ -271,10 +303,9 @@ class DashboardService {
         acc.credits += row.totalCredits;
         acc.bruto = toMoney(acc.bruto + row.totalBruto);
         acc.liquido = toMoney(acc.liquido + row.totalLiquido);
-        acc.orders += row.totalOrders;
         return acc;
       },
-      { credits: 0, bruto: 0, liquido: 0, orders: 0 }
+      { credits: 0, bruto: 0, liquido: 0, orders: Number(totalOrdersRow?.total_orders) || 0 }
     );
 
     return { totals, servidores };
@@ -289,10 +320,10 @@ class DashboardService {
 
     let query = db('recharge_requests as rr')
       .innerJoin('servers as s', 's.id', 'rr.server_id')
+      .leftJoin('recharge_orders as o', 'o.id', 'rr.order_id')
       .leftJoin('credentials as c', 'c.id', 'rr.credential_id')
       .leftJoin('clients as cl', 'cl.id', 'c.client_id')
       .where('rr.server_id', serverId)
-      .where('rr.payment_status', 'pago')
       .select(
         'rr.id',
         'rr.order_id',
@@ -301,19 +332,16 @@ class DashboardService {
         'rr.unit_price',
         'rr.total_amount',
         'rr.is_promo',
-        'rr.updated_at as paid_at',
+        db.raw(`${REVENUE_AT_SQL} as paid_at`),
         'rr.created_at',
         'cl.nome as cliente',
         db.raw('(rr.total_amount - rr.quantity * s.custo_credito)::numeric as liquido')
       )
-      .orderBy('rr.updated_at', 'desc')
+      .orderBy('paid_at', 'desc')
       .limit(500);
 
-    if (monthBounds(month)) {
-      query = applyMonthFilter(query, 'rr.updated_at', month);
-    } else {
-      query = applyPeriodFilter(query, 'rr.updated_at', period);
-    }
+    query = applyCompletedRevenueFilter(query);
+    query = applyRevenueWindowFilter(query, { period, month });
 
     const rows = await query;
 
@@ -342,6 +370,8 @@ class DashboardService {
       orderArchived: Boolean(r.orderArchived ?? r.order_archived ?? false),
       paymentStatus: r.paymentStatus ?? r.payment_status ?? null,
       createdAt: r.createdAt ?? r.created_at ?? null,
+      updatedAt: r.updatedAt ?? r.updated_at ?? null,
+      completedAt: r.completedAt ?? r.completed_at ?? null,
       serverId: r.serverId ?? r.server_id ?? null,
       quantity: Number(r.quantity ?? 0),
       totalAmount: Number(r.totalAmount ?? r.total_amount ?? 0),
@@ -357,7 +387,12 @@ class DashboardService {
 
     const custoByServerId = new Map(servers.map((s) => [String(s.id), Number(s.custoCredito ?? 0)]));
 
-    const paidRecharges = normalized.filter((r) => r.paymentStatus === 'pago');
+    const paidRecharges = normalized
+      .filter((r) => (r.orderId != null ? r.orderStatus === 'CONCLUIDO' : r.paymentStatus === 'pago'))
+      .map((r) => ({
+        ...r,
+        revenueAt: r.orderId != null ? (r.completedAt || r.updatedAt) : r.updatedAt
+      }));
     const todayStr = brtDateStr(new Date());
 
     // Panel is computed PER ORDER (not per item) using the order's workflow `status`
@@ -410,7 +445,7 @@ class DashboardService {
 
     for (const period of periods) {
       const subset = paidRecharges.filter(
-        (r) => r.createdAt && dateStrMatchesPeriod(brtDateStr(r.createdAt), todayStr, period)
+        (r) => r.revenueAt && dateStrMatchesPeriod(brtDateStr(r.revenueAt), todayStr, period)
       );
       const totalQty = subset.reduce((acc, r) => acc + r.quantity, 0);
       const totalLucro = subset.reduce((acc, r) => {
@@ -485,10 +520,12 @@ class DashboardService {
           'rr.quantity',
           'rr.total_amount',
           'rr.created_at',
+          'rr.updated_at',
           'rr.payment_status',
           'rr.is_promo',
           'o.status as order_status',
           'o.archived as order_archived',
+          'o.completed_at as completed_at',
           db.raw(HAS_PROOF_SQL)
         )
     ]);
@@ -521,8 +558,10 @@ class DashboardService {
           'rr.total_amount',
           'rr.payment_status',
           'rr.created_at',
+          'rr.updated_at',
           'o.status as order_status',
           'o.archived as order_archived',
+          'o.completed_at as completed_at',
           db.raw(HAS_PROOF_SQL)
         )
     ]);
