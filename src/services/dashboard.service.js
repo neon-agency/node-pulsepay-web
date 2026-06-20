@@ -377,24 +377,31 @@ class DashboardService {
       }
     }
 
-    // solicitadas = fila de aprovação: pedidos SOLICITADO COM comprovante de QUALQUER
-    // data — fica sincronizado com o badge "Pedidos" (GET /recharge-orders/pending-count,
-    // mesma regra: status SOLICITADO + comprovante + não arquivado).
-    let solicitadas = 0;
+    // aguardandoAprovacao = fila de aprovação: pedidos SOLICITADO COM comprovante de
+    // QUALQUER data — sincronizado com o badge "Pedidos" (GET /recharge-orders/pending-count,
+    // mesma regra: status SOLICITADO + comprovante + não arquivado). Usado pelo banner.
+    let aguardandoAprovacao = 0;
     for (const r of allOrders.values()) {
-      if (r.orderStatus === 'SOLICITADO' && r.hasProof) solicitadas += 1;
+      if (r.orderStatus === 'SOLICITADO' && r.hasProof) aguardandoAprovacao += 1;
     }
 
-    // aprovadas / faltas = atividade do DIA. aprovadas = CONCLUIDO de hoje;
-    // faltas = SOLICITADO de hoje SEM comprovante (revenda ainda não enviou).
+    // Painel "Recargas Hoje" — TUDO da mesma data de hoje (calendário BRT, sem janela de
+    // 24h), apenas pedidos COM comprovante, e fecha por construção: solicitadas = aprovadas + faltas.
+    //   solicitadas = pedidos de hoje com comprovante (não cancelados);
+    //   aprovadas   = concluídos hoje (com comprovante);
+    //   faltas      = pendentes = solicitadas − aprovadas (o que ainda não concluiu).
+    // Sem comprovante, CANCELADO e o fluxo legado (sem order_status) ficam fora.
+    let solicitadas = 0;
     let aprovadas = 0;
-    let faltas = 0;
     for (const r of ordersDoDia.values()) {
+      if (!r.hasProof) continue;
+      if (r.orderStatus !== 'SOLICITADO' && r.orderStatus !== 'EM_ESPERA' && r.orderStatus !== 'CONCLUIDO') continue;
+      solicitadas += 1;
       if (r.orderStatus === 'CONCLUIDO') aprovadas += 1;
-      else if (r.orderStatus === 'SOLICITADO' && !r.hasProof) faltas += 1;
     }
+    const faltas = solicitadas - aprovadas;
 
-    const recargasDoDia = { solicitadas, aprovadas, faltas };
+    const recargasDoDia = { solicitadas, aprovadas, faltas, aguardandoAprovacao };
 
     const periods = ['dia', 'semana', 'mes'];
     const creditosVendidos = {};
