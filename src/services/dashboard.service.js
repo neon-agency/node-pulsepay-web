@@ -282,6 +282,10 @@ class DashboardService {
 
   _normalizeRecharge(r) {
     return {
+      id: r.id ?? null,
+      orderId: r.orderId ?? r.order_id ?? null,
+      orderStatus: r.orderStatus ?? r.order_status ?? null,
+      orderArchived: Boolean(r.orderArchived ?? r.order_archived ?? false),
       paymentStatus: r.paymentStatus ?? r.payment_status ?? null,
       createdAt: r.createdAt ?? r.created_at ?? null,
       serverId: r.serverId ?? r.server_id ?? null,
@@ -301,17 +305,32 @@ class DashboardService {
 
     const paidRecharges = normalized.filter((r) => r.paymentStatus === 'pago');
     const todayStr = brtDateStr(new Date());
-    // Only count today's recharges that have a payment proof attached — a freshly
-    // created order with no proof yet is not a "solicitação" for the panel.
-    const todayRecharges = normalized.filter(
-      (r) => r.createdAt && r.hasProof && brtDateStr(r.createdAt) === todayStr
-    );
 
-    const recargasDoDia = todayRecharges.reduce(
+    // "Recargas Hoje" panel is computed PER ORDER (not per item) using the order's
+    // workflow `status` column — not `payment_status`, which is legacy and goes stale
+    // (an order can be CONCLUIDO while still carrying pix_gerado). One order fans out
+    // into N `recharge_requests` rows sharing the same `order_id`, so we dedup by order
+    // and keep the first row seen (items of one order share order_status/archived/proof).
+    const ordersDoDia = new Map();
+    for (const r of normalized) {
+      if (!r.createdAt || brtDateStr(r.createdAt) !== todayStr) continue;
+      if (r.orderArchived) continue; // archived orders are out of the daily panel
+      const key = r.orderId != null ? `o${r.orderId}` : `r${r.id}`;
+      if (!ordersDoDia.has(key)) ordersDoDia.set(key, r);
+    }
+
+    // solicitadas = pedidos SOLICITADO de hoje COM comprovante (fila de aprovação);
+    // aprovadas   = pedidos CONCLUIDO de hoje;
+    // faltas      = pedidos SOLICITADO de hoje SEM comprovante (revenda ainda não enviou).
+    // CANCELADO e o fluxo legado (sem order_status) ficam fora desta contagem.
+    const recargasDoDia = Array.from(ordersDoDia.values()).reduce(
       (acc, r) => {
-        acc.solicitadas += 1;
-        if (r.paymentStatus === 'pago') acc.aprovadas += 1;
-        else if (r.paymentStatus === 'pendente_pagamento' || r.paymentStatus === 'pix_gerado') acc.faltas += 1;
+        if (r.orderStatus === 'CONCLUIDO') {
+          acc.aprovadas += 1;
+        } else if (r.orderStatus === 'SOLICITADO') {
+          if (r.hasProof) acc.solicitadas += 1;
+          else acc.faltas += 1;
+        }
         return acc;
       },
       { solicitadas: 0, aprovadas: 0, faltas: 0 }
@@ -390,15 +409,21 @@ class DashboardService {
     const [clients, servers, allRecharges] = await Promise.all([
       clientsRepository.findAll(),
       serversRepository.findAll(),
-      db('recharge_requests as rr').select(
-        'rr.server_id',
-        'rr.quantity',
-        'rr.total_amount',
-        'rr.created_at',
-        'rr.payment_status',
-        'rr.is_promo',
-        db.raw(HAS_PROOF_SQL)
-      )
+      db('recharge_requests as rr')
+        .leftJoin('recharge_orders as o', 'o.id', 'rr.order_id')
+        .select(
+          'rr.id',
+          'rr.order_id',
+          'rr.server_id',
+          'rr.quantity',
+          'rr.total_amount',
+          'rr.created_at',
+          'rr.payment_status',
+          'rr.is_promo',
+          'o.status as order_status',
+          'o.archived as order_archived',
+          db.raw(HAS_PROOF_SQL)
+        )
     ]);
 
     return this._computeSummary({ clients, servers, allRecharges });
@@ -419,14 +444,20 @@ class DashboardService {
     const [servers, clients, allRecharges] = await Promise.all([
       serversRepository.findAll(),
       db('clients').select('id', 'tipo', db.raw('servidor_id as servidor')),
-      db('recharge_requests as rr').select(
-        'rr.server_id',
-        'rr.quantity',
-        'rr.total_amount',
-        'rr.payment_status',
-        'rr.created_at',
-        db.raw(HAS_PROOF_SQL)
-      )
+      db('recharge_requests as rr')
+        .leftJoin('recharge_orders as o', 'o.id', 'rr.order_id')
+        .select(
+          'rr.id',
+          'rr.order_id',
+          'rr.server_id',
+          'rr.quantity',
+          'rr.total_amount',
+          'rr.payment_status',
+          'rr.created_at',
+          'o.status as order_status',
+          'o.archived as order_archived',
+          db.raw(HAS_PROOF_SQL)
+        )
     ]);
 
     const dashboard = this._computeSummary({ clients, servers, allRecharges });
