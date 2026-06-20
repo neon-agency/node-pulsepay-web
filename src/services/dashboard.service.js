@@ -306,35 +306,41 @@ class DashboardService {
     const paidRecharges = normalized.filter((r) => r.paymentStatus === 'pago');
     const todayStr = brtDateStr(new Date());
 
-    // "Recargas Hoje" panel is computed PER ORDER (not per item) using the order's
-    // workflow `status` column — not `payment_status`, which is legacy and goes stale
-    // (an order can be CONCLUIDO while still carrying pix_gerado). One order fans out
-    // into N `recharge_requests` rows sharing the same `order_id`, so we dedup by order
-    // and keep the first row seen (items of one order share order_status/archived/proof).
-    const ordersDoDia = new Map();
+    // Panel is computed PER ORDER (not per item) using the order's workflow `status`
+    // column — not `payment_status`, which is legacy and goes stale (an order can be
+    // CONCLUIDO while still carrying pix_gerado). One order fans out into N
+    // `recharge_requests` rows sharing the same `order_id`, so we dedup by order and
+    // keep the first row seen (items of one order share order_status/archived/proof).
+    // Archived orders are out of the panel entirely.
+    const allOrders = new Map(); // any date — for the approval queue
+    const ordersDoDia = new Map(); // today only — for daily activity
     for (const r of normalized) {
-      if (!r.createdAt || brtDateStr(r.createdAt) !== todayStr) continue;
-      if (r.orderArchived) continue; // archived orders are out of the daily panel
+      if (r.orderArchived) continue;
       const key = r.orderId != null ? `o${r.orderId}` : `r${r.id}`;
-      if (!ordersDoDia.has(key)) ordersDoDia.set(key, r);
+      if (!allOrders.has(key)) allOrders.set(key, r);
+      if (r.createdAt && brtDateStr(r.createdAt) === todayStr && !ordersDoDia.has(key)) {
+        ordersDoDia.set(key, r);
+      }
     }
 
-    // solicitadas = pedidos SOLICITADO de hoje COM comprovante (fila de aprovação);
-    // aprovadas   = pedidos CONCLUIDO de hoje;
-    // faltas      = pedidos SOLICITADO de hoje SEM comprovante (revenda ainda não enviou).
-    // CANCELADO e o fluxo legado (sem order_status) ficam fora desta contagem.
-    const recargasDoDia = Array.from(ordersDoDia.values()).reduce(
-      (acc, r) => {
-        if (r.orderStatus === 'CONCLUIDO') {
-          acc.aprovadas += 1;
-        } else if (r.orderStatus === 'SOLICITADO') {
-          if (r.hasProof) acc.solicitadas += 1;
-          else acc.faltas += 1;
-        }
-        return acc;
-      },
-      { solicitadas: 0, aprovadas: 0, faltas: 0 }
-    );
+    // solicitadas = fila de aprovação: pedidos SOLICITADO COM comprovante de QUALQUER
+    // data — fica sincronizado com o badge "Pedidos" (GET /recharge-orders/pending-count,
+    // mesma regra: status SOLICITADO + comprovante + não arquivado).
+    let solicitadas = 0;
+    for (const r of allOrders.values()) {
+      if (r.orderStatus === 'SOLICITADO' && r.hasProof) solicitadas += 1;
+    }
+
+    // aprovadas / faltas = atividade do DIA. aprovadas = CONCLUIDO de hoje;
+    // faltas = SOLICITADO de hoje SEM comprovante (revenda ainda não enviou).
+    let aprovadas = 0;
+    let faltas = 0;
+    for (const r of ordersDoDia.values()) {
+      if (r.orderStatus === 'CONCLUIDO') aprovadas += 1;
+      else if (r.orderStatus === 'SOLICITADO' && !r.hasProof) faltas += 1;
+    }
+
+    const recargasDoDia = { solicitadas, aprovadas, faltas };
 
     const periods = ['dia', 'semana', 'mes'];
     const creditosVendidos = {};
