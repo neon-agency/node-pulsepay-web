@@ -31,6 +31,13 @@ class DashboardController {
     return res.status(200).json(data);
   }
 
+  async financeServerOrders(req, res) {
+    const { serverId } = req.params || {};
+    const { period, month } = req.query || {};
+    const data = await dashboardService.financeServerOrders({ serverId, period, month });
+    return res.status(200).json(data);
+  }
+
   async page(_req, res) {
     const data = await dashboardService.pageBundle();
     return res.status(200).json(data);

@@ -280,6 +280,60 @@ class DashboardService {
     return { totals, servidores };
   }
 
+  // Per-order (per recharge_requests item) breakdown of PAID revenue for ONE server,
+  // within the same period/month window as `finances()`. Powers the accordion that
+  // expands under a server card on the Finanças page. Joins the reseller (client) name
+  // and computes per-row liquido against the server's credit cost.
+  async financeServerOrders({ serverId, period = 'all', month = null } = {}) {
+    if (!serverId) return { serverId: null, orders: [] };
+
+    let query = db('recharge_requests as rr')
+      .innerJoin('servers as s', 's.id', 'rr.server_id')
+      .leftJoin('credentials as c', 'c.id', 'rr.credential_id')
+      .leftJoin('clients as cl', 'cl.id', 'c.client_id')
+      .where('rr.server_id', serverId)
+      .where('rr.payment_status', 'pago')
+      .select(
+        'rr.id',
+        'rr.order_id',
+        'rr.account_login',
+        'rr.quantity',
+        'rr.unit_price',
+        'rr.total_amount',
+        'rr.is_promo',
+        'rr.updated_at as paid_at',
+        'rr.created_at',
+        'cl.nome as cliente',
+        db.raw('(rr.total_amount - rr.quantity * s.custo_credito)::numeric as liquido')
+      )
+      .orderBy('rr.updated_at', 'desc')
+      .limit(500);
+
+    if (monthBounds(month)) {
+      query = applyMonthFilter(query, 'rr.updated_at', month);
+    } else {
+      query = applyPeriodFilter(query, 'rr.updated_at', period);
+    }
+
+    const rows = await query;
+
+    const orders = rows.map((row) => ({
+      id: row.id,
+      orderId: row.order_id,
+      cliente: row.cliente || null,
+      accountLogin: row.account_login || null,
+      credits: Number(row.quantity) || 0,
+      unitPrice: toMoney(Number(row.unit_price) || 0),
+      bruto: toMoney(Number(row.total_amount) || 0),
+      liquido: toMoney(Number(row.liquido) || 0),
+      isPromo: Boolean(row.is_promo),
+      paidAt: row.paid_at,
+      createdAt: row.created_at
+    }));
+
+    return { serverId, orders };
+  }
+
   _normalizeRecharge(r) {
     return {
       id: r.id ?? null,

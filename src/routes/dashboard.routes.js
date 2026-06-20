@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const dashboardController = require('../controllers/dashboard.controller');
 const asyncHandler = require('../utils/async-handler');
+const requireRole = require('../middlewares/require-role.middleware');
 
 const dashboardRoutes = Router();
 
@@ -22,6 +23,13 @@ dashboardRoutes.get(
 dashboardRoutes.get(
   '/finances',
   asyncHandler((req, res) => dashboardController.finances(req, res))
+);
+// Per-order detail exposes reseller names + account logins, so lock it to admins
+// (internal bypasses requireRole). Resellers must never enumerate other clients' orders.
+dashboardRoutes.get(
+  '/finances/server/:serverId',
+  requireRole('admin'),
+  asyncHandler((req, res) => dashboardController.financeServerOrders(req, res))
 );
 
 module.exports = dashboardRoutes;
